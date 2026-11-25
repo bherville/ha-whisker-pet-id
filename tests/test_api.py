@@ -153,8 +153,8 @@ class TestApiHelpers(unittest.TestCase):
         self.assertEqual(res["matched_clips"][0]["clip_id"], "99901")
         self.assertEqual(res["matched_clips"][0]["matched_by"], "timestamp")
 
-        # Scale anomaly + unassigned visit (11.53 lb)
-        act_anomaly = {
+        # Unassigned at 11.53 lb is valid weight (below 14.0 lb anomaly ceiling)
+        act_unassigned = {
             "eventId": "evt-2",
             "type": "PET_VISIT",
             "timestamp": "2026-11-24T14:35:00Z",
@@ -162,11 +162,49 @@ class TestApiHelpers(unittest.TestCase):
             "petIds": [],
             "cameraEventIds": ["99901"],
         }
+        res_un = api.analyze_visit(
+            act_unassigned, pets_by_id, all_pets, clips, "America/Chicago"
+        )
+        self.assertEqual(res_un["flags"], ["unassigned"])
+        self.assertEqual(res_un["matched_clips"][0]["matched_by"], "id")
+
+        # Scale anomaly + unassigned visit (15.50 lb >= 14.0 lb ceiling)
+        act_anomaly = {
+            "eventId": "evt-3",
+            "type": "PET_VISIT",
+            "timestamp": "2026-11-24T14:36:00Z",
+            "petWeight": 1550.0,
+            "petIds": [],
+            "cameraEventIds": [],
+        }
         res_anom = api.analyze_visit(
             act_anomaly, pets_by_id, all_pets, clips, "America/Chicago"
         )
         self.assertEqual(res_anom["flags"], ["unassigned", "scale_anomaly"])
-        self.assertEqual(res_anom["matched_clips"][0]["matched_by"], "id")
+
+    def test_back_to_back_clip_ranking_prefers_pre_exit_entry_clip(self) -> None:
+        lexi = _make_pet("PET-LEXI", "Lexi", 11.6)
+        pets_by_id = {"PET-LEXI": lexi}
+
+        # Visit ends at 17:18:49 after 65s -> true clip started ~89s earlier (17:17:20),
+        # while next visit's clip started 3s earlier (17:18:46).
+        act = {
+            "eventId": "evt-b2b",
+            "type": "PET_VISIT",
+            "timestamp": "2026-11-24T23:18:49Z",
+            "petWeight": 998.0,
+            "duration": 65,
+            "petIds": ["PET-LEXI"],
+            "cameraEventIds": [],
+        }
+        clips = [
+            {"id": 2002, "eventType": "cat_identified", "createdAt": "2026-11-24T23:18:46Z"},
+            {"id": 2001, "eventType": "cat_identified", "createdAt": "2026-11-24T23:17:21Z"},
+            {"id": 2003, "eventType": "cat_identified", "createdAt": "2026-11-24T23:23:28Z"},
+        ]
+        res = api.analyze_visit(act, pets_by_id, [lexi], clips, "America/Chicago")
+        self.assertEqual([c["clip_id"] for c in res["matched_clips"]], ["2001", "2002", "2003"])
+        self.assertEqual(res["matched_clips"][0]["signed_time_delta_seconds"], -88.0)
 
 
 class TestAsyncApi(unittest.IsolatedAsyncioTestCase):

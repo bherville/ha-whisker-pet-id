@@ -67,7 +67,7 @@ list_visits:
       name: Max Clip Delta Seconds
       description: Maximum seconds between a visit timestamp and a camera clip timestamp to treat as a match.
       required: false
-      default: 180
+      default: 360
       selector:
         number:
           min: 10

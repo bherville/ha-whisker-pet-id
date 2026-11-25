@@ -23,6 +23,7 @@ from .api import (
     async_reassign_visit,
 )
 from .const import (
+    DEFAULT_MAX_CLIP_DELTA_SECONDS,
     DOMAIN,
     SERVICE_GET_CLIP_URLS,
     SERVICE_GET_PETS,
@@ -50,7 +51,7 @@ LIST_VISITS_SCHEMA = vol.Schema(
         vol.Optional("activity_type", default="PET_VISIT"): cv.string,
         vol.Optional("date"): cv.string,
         vol.Optional("include_clips", default=True): cv.boolean,
-        vol.Optional("max_clip_delta_seconds", default=180): vol.All(
+        vol.Optional("max_clip_delta_seconds", default=DEFAULT_MAX_CLIP_DELTA_SECONDS): vol.All(
             vol.Coerce(int), vol.Range(min=10, max=1800)
         ),
     }
@@ -93,7 +94,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             activity_type=call.data.get("activity_type", "PET_VISIT"),
             date_str=call.data.get("date"),
             include_clips=bool(call.data.get("include_clips", True)),
-            max_clip_delta_seconds=int(call.data.get("max_clip_delta_seconds", 180)),
+            max_clip_delta_seconds=int(
+                call.data.get("max_clip_delta_seconds", DEFAULT_MAX_CLIP_DELTA_SECONDS)
+            ),
         )
 
     async def handle_get_clip_urls(call: ServiceCall) -> ServiceResponse:

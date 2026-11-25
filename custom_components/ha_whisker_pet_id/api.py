@@ -16,6 +16,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
     CAMERA_INVENTORY_API,
+    DEFAULT_MAX_CLIP_DELTA_SECONDS,
     DEFAULT_MAX_VALID_WEIGHT_LBS,
     DEFAULT_MIN_VALID_WEIGHT_LBS,
     DEFAULT_WEIGHT_MISMATCH_LBS,
@@ -186,7 +187,7 @@ def analyze_visit(
     clips: list[dict[str, Any]],
     tz_name: str,
     *,
-    max_clip_delta_seconds: int = 180,
+    max_clip_delta_seconds: int = DEFAULT_MAX_CLIP_DELTA_SECONDS,
     mismatch_threshold_lbs: float = DEFAULT_WEIGHT_MISMATCH_LBS,
     max_valid_weight_lbs: float = DEFAULT_MAX_VALID_WEIGHT_LBS,
     min_valid_weight_lbs: float = DEFAULT_MIN_VALID_WEIGHT_LBS,
@@ -257,12 +258,23 @@ def analyze_visit(
 
     matched_clips: list[dict[str, Any]] = []
     cam_id_set = set(camera_event_ids)
+    raw_duration = activity.get("duration")
+    expected_entry_offset: float | None = (
+        -(float(raw_duration) + 24.0)
+        if isinstance(raw_duration, (int, float))
+        and not isinstance(raw_duration, bool)
+        and raw_duration >= 0
+        else None
+    )
+
     for clip in clips:
         clip_id = str(clip.get("id", ""))
         clip_dt = parse_timestamp(clip.get("createdAt"))
         delta_sec: float | None = None
+        signed_delta_sec: float | None = None
         if visit_dt is not None and clip_dt is not None:
-            delta_sec = round(abs((clip_dt - visit_dt).total_seconds()), 1)
+            signed_delta_sec = round((clip_dt - visit_dt).total_seconds(), 1)
+            delta_sec = round(abs(signed_delta_sec), 1)
 
         id_match = bool(clip_id and clip_id in cam_id_set)
         time_match = delta_sec is not None and delta_sec <= max_clip_delta_seconds
@@ -276,15 +288,23 @@ def analyze_visit(
                     "thumbnail_url": clip.get("videoThumbnail"),
                     "pet_detections": clip.get("petDetections") or [],
                     "time_delta_seconds": delta_sec,
+                    "signed_time_delta_seconds": signed_delta_sec,
                     "matched_by": "id" if id_match else "timestamp",
                 }
             )
-    matched_clips.sort(
-        key=lambda item: (
-            0 if item["matched_by"] == "id" else 1,
-            item["time_delta_seconds"] if item["time_delta_seconds"] is not None else 9999,
-        )
-    )
+
+    def _clip_sort_key(item: dict[str, Any]) -> tuple[int, int, float]:
+        signed = item.get("signed_time_delta_seconds")
+        abs_delta = item.get("time_delta_seconds")
+        # LR5 PET_VISIT timestamps mark visit exit, whereas clip createdAt marks entry (~duration+24s earlier).
+        is_post_exit = 0 if (signed is not None and signed <= 15.0) else 1
+        if is_post_exit == 0 and expected_entry_offset is not None and signed is not None:
+            metric = round(abs(signed - expected_entry_offset), 1)
+        else:
+            metric = abs_delta if abs_delta is not None else 9999.0
+        return (0 if item["matched_by"] == "id" else 1, is_post_exit, metric)
+
+    matched_clips.sort(key=_clip_sort_key)
 
     return {
         "event_id": event_id,
@@ -395,7 +415,7 @@ async def async_list_visits(
     activity_type: str | None = "PET_VISIT",
     date_str: str | None = None,
     include_clips: bool = True,
-    max_clip_delta_seconds: int = 180,
+    max_clip_delta_seconds: int = DEFAULT_MAX_CLIP_DELTA_SECONDS,
 ) -> dict[str, Any]:
     """Fetch LR5 activities, join matching camera clips, and flag Pet ID issues."""
     _, _, account = get_litterrobot_runtime(hass)
