@@ -1,0 +1,109 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up HA Whisker Pet ID",
+        "description": "Connects to your existing Whisker (litterrobot) integration to expose Litter-Robot 5 Pet ID visits, camera clips, and visit reassignment actions."
+      }
+    },
+    "error": {
+      "no_litterrobot_lr5": "No loaded Whisker integration with a Litter-Robot 5 was found. Configure and load the official Whisker integration first."
+    },
+    "abort": {
+      "single_instance_allowed": "Already configured. Only a single instance is allowed."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "flagged_visits": {
+        "name": "Flagged visits"
+      }
+    }
+  },
+  "services": {
+    "get_pets": {
+      "name": "Get Whisker Pets",
+      "description": "List all Whisker pet profiles with baseline weights, tags, and recent weight history.",
+      "fields": {
+        "refresh": {
+          "name": "Refresh from Cloud",
+          "description": "Force a fresh GraphQL fetch of pet profiles and weight histories before returning."
+        }
+      }
+    },
+    "list_visits": {
+      "name": "List LR5 Visits",
+      "description": "Fetch recent Litter-Robot 5 activities, join matching Pet ID camera clips, and flag misattributions.",
+      "fields": {
+        "robot": {
+          "name": "Robot",
+          "description": "Optional Litter-Robot 5 name or serial (defaults to sole LR5 unit)."
+        },
+        "limit": {
+          "name": "Limit",
+          "description": "Maximum number of activity records to retrieve."
+        },
+        "offset": {
+          "name": "Offset",
+          "description": "Number of activity records to skip for pagination."
+        },
+        "activity_type": {
+          "name": "Activity Type",
+          "description": "Filter activity type (e.g. PET_VISIT, or empty string for all events)."
+        },
+        "date": {
+          "name": "Date",
+          "description": "Optional YYYY-MM-DD local date filter for clips and visits."
+        },
+        "include_clips": {
+          "name": "Include Camera Clips",
+          "description": "Join matching LR5 Pro camera clips by event ID or timestamp proximity."
+        },
+        "max_clip_delta_seconds": {
+          "name": "Max Clip Delta Seconds",
+          "description": "Maximum seconds between a visit timestamp and a camera clip timestamp to treat as a match."
+        }
+      }
+    },
+    "get_clip_urls": {
+      "name": "Get LR5 Clip URLs",
+      "description": "Exchange a recorded LR5 Pro clip ID for short-lived presigned S3 MP4 chunk URLs and HLS cookies.",
+      "fields": {
+        "clip_id": {
+          "name": "Clip ID",
+          "description": "The recorded camera clip ID from list_visits."
+        },
+        "robot": {
+          "name": "Robot",
+          "description": "Optional Litter-Robot 5 name or serial."
+        }
+      }
+    },
+    "reassign_visit": {
+      "name": "Reassign LR5 Pet Visit",
+      "description": "Reassign, assign, or unassign a Litter-Robot 5 PET_VISIT event via Whisker's REST API.",
+      "fields": {
+        "event_id": {
+          "name": "Event ID",
+          "description": "The eventId of the PET_VISIT activity to modify."
+        },
+        "from_pet": {
+          "name": "From Pet",
+          "description": "Name or petId currently assigned to the visit (provide alone to unassign, or with to_pet to reassign)."
+        },
+        "to_pet": {
+          "name": "To Pet",
+          "description": "Name or petId to assign the visit to (omit to unassign)."
+        },
+        "robot": {
+          "name": "Robot",
+          "description": "Optional Litter-Robot 5 name or serial."
+        },
+        "refresh": {
+          "name": "Refresh Sensors",
+          "description": "Refresh Home Assistant's Litter-Robot and Pet ID coordinators after updating."
+        }
+      }
+    }
+  }
+}

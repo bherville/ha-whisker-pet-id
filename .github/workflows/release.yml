@@ -1,0 +1,36 @@
+name: HACS GitHub Release (Mirror)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish GitHub Release for HACS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create zip for HACS
+        run: |
+          cd custom_components
+          zip -r ../ha_whisker_pet_id.zip ha_whisker_pet_id
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: |
+            ## HA Whisker Pet ID ${{ github.ref_name }}
+
+            Canonical source repository: https://gitlab.com/bherville/home-assistant/ha-whisker-pet-id
+
+            See [CHANGELOG](https://gitlab.com/bherville/home-assistant/ha-whisker-pet-id/-/blob/main/CHANGELOG.md) for details.
+          files: |
+            ha_whisker_pet_id.zip

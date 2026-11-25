@@ -1,0 +1,134 @@
+get_pets:
+  name: Get Whisker Pets
+  description: List all Whisker pet profiles with baseline weights, tags, and recent weight history.
+  fields:
+    refresh:
+      name: Refresh from Cloud
+      description: Force a fresh GraphQL fetch of pet profiles and weight histories before returning.
+      required: false
+      default: false
+      selector:
+        boolean:
+
+list_visits:
+  name: List LR5 Visits
+  description: Fetch recent Litter-Robot 5 activities, join matching Pet ID camera clips, and flag misattributions.
+  fields:
+    robot:
+      name: Robot
+      description: Optional Litter-Robot 5 name or serial (defaults to sole LR5 unit).
+      required: false
+      example: "Flex Room"
+      selector:
+        text:
+    limit:
+      name: Limit
+      description: Maximum number of activity records to retrieve.
+      required: false
+      default: 50
+      selector:
+        number:
+          min: 1
+          max: 250
+          mode: box
+    offset:
+      name: Offset
+      description: Number of activity records to skip for pagination.
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 1000
+          mode: box
+    activity_type:
+      name: Activity Type
+      description: Filter activity type (e.g. PET_VISIT, or empty string for all events).
+      required: false
+      default: "PET_VISIT"
+      example: "PET_VISIT"
+      selector:
+        text:
+    date:
+      name: Date
+      description: Optional YYYY-MM-DD local date filter for clips and visits.
+      required: false
+      example: "2026-11-24"
+      selector:
+        text:
+    include_clips:
+      name: Include Camera Clips
+      description: Join matching LR5 Pro camera clips by event ID or timestamp proximity.
+      required: false
+      default: true
+      selector:
+        boolean:
+    max_clip_delta_seconds:
+      name: Max Clip Delta Seconds
+      description: Maximum seconds between a visit timestamp and a camera clip timestamp to treat as a match.
+      required: false
+      default: 180
+      selector:
+        number:
+          min: 10
+          max: 1800
+          mode: box
+
+get_clip_urls:
+  name: Get LR5 Clip URLs
+  description: Exchange a recorded LR5 Pro clip ID for short-lived presigned S3 MP4 chunk URLs and HLS cookies.
+  fields:
+    clip_id:
+      name: Clip ID
+      description: The recorded camera clip ID from list_visits.
+      required: true
+      example: "123456"
+      selector:
+        text:
+    robot:
+      name: Robot
+      description: Optional Litter-Robot 5 name or serial.
+      required: false
+      example: "Flex Room"
+      selector:
+        text:
+
+reassign_visit:
+  name: Reassign LR5 Pet Visit
+  description: Reassign, assign, or unassign a Litter-Robot 5 PET_VISIT event via Whisker's REST API.
+  fields:
+    event_id:
+      name: Event ID
+      description: The eventId of the PET_VISIT activity to modify.
+      required: true
+      example: "evt-12345"
+      selector:
+        text:
+    from_pet:
+      name: From Pet
+      description: Name or petId currently assigned to the visit (provide alone to unassign, or with to_pet to reassign).
+      required: false
+      example: "Jane"
+      selector:
+        text:
+    to_pet:
+      name: To Pet
+      description: Name or petId to assign the visit to (omit to unassign).
+      required: false
+      example: "Sterling"
+      selector:
+        text:
+    robot:
+      name: Robot
+      description: Optional Litter-Robot 5 name or serial.
+      required: false
+      example: "Flex Room"
+      selector:
+        text:
+    refresh:
+      name: Refresh Sensors
+      description: Refresh Home Assistant's Litter-Robot and Pet ID coordinators after updating.
+      required: false
+      default: true
+      selector:
+        boolean:
