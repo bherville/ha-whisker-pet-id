@@ -179,6 +179,7 @@ class WhiskerHealthSummarySensor(
             "alert_message": data.get("alert_message", ""),
             "generation_mode": data.get("generation_mode"),
             "ai_task_entity": data.get("ai_task_entity"),
+            "notify_service": data.get("notify_service"),
             "ai_error": data.get("ai_error"),
             "trigger": data.get("trigger"),
             "last_generated_at": data.get("last_generated_at"),

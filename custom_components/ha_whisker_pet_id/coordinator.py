@@ -172,6 +172,9 @@ class WhiskerHealthCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "serial": visits_resp.get("serial"),
             "trigger": trigger,
             "ai_task_entity": task_entity,
+            "notify_service": str(
+                self.option(CONF_NOTIFY_SERVICE, DEFAULT_NOTIFY_SERVICE)
+            ),
             "last_generated_at": context["generated_at"],
             "window_hours": context["window_hours"],
             "total_visits": context["total_visits"],

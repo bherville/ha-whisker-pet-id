@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1 - 2026-11-27
+
+### Patch Changes
+
+- Add `ha_whisker_pet_id.configure_health` action to update and persist AI Task, `notify_service`, schedule, and cluster thresholds directly via service calls.
+- Expose configured `notify_service` in `sensor.ha_whisker_pet_id_health_summary` attributes.
+
 ## 0.2.0 - 2026-11-27
 
 ### Minor Changes

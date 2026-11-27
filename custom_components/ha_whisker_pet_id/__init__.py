@@ -24,8 +24,19 @@ from .api import (
     async_reassign_visit,
 )
 from .const import (
+    CONF_AI_TASK_ENTITY,
+    CONF_ALERT_COOLDOWN_HOURS,
+    CONF_CLUSTER_MIN_VISITS,
+    CONF_CLUSTER_WINDOW_MINUTES,
+    CONF_ENABLE_DAILY_SUMMARY,
+    CONF_ENABLE_PUSH_ALERTS,
+    CONF_HEALTH_WINDOW_HOURS,
+    CONF_NOTIFY_SERVICE,
+    CONF_SUMMARY_HOUR,
+    CONF_SUMMARY_MINUTE,
     DEFAULT_MAX_CLIP_DELTA_SECONDS,
     DOMAIN,
+    SERVICE_CONFIGURE_HEALTH,
     SERVICE_GENERATE_HEALTH_SUMMARY,
     SERVICE_GET_CLIP_URLS,
     SERVICE_GET_PETS,
@@ -84,6 +95,29 @@ GENERATE_HEALTH_SUMMARY_SCHEMA = vol.Schema(
         vol.Optional("notify", default=False): cv.boolean,
         vol.Optional("notify_service"): cv.string,
         vol.Optional("robot"): cv.string,
+    }
+)
+
+CONFIGURE_HEALTH_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_AI_TASK_ENTITY): cv.string,
+        vol.Optional(CONF_NOTIFY_SERVICE): cv.string,
+        vol.Optional(CONF_ENABLE_DAILY_SUMMARY): cv.boolean,
+        vol.Optional(CONF_SUMMARY_HOUR): vol.All(vol.Coerce(int), vol.Range(min=0, max=23)),
+        vol.Optional(CONF_SUMMARY_MINUTE): vol.All(vol.Coerce(int), vol.Range(min=0, max=59)),
+        vol.Optional(CONF_ENABLE_PUSH_ALERTS): cv.boolean,
+        vol.Optional(CONF_HEALTH_WINDOW_HOURS): vol.All(
+            vol.Coerce(int), vol.Range(min=12, max=168)
+        ),
+        vol.Optional(CONF_CLUSTER_WINDOW_MINUTES): vol.All(
+            vol.Coerce(int), vol.Range(min=5, max=60)
+        ),
+        vol.Optional(CONF_CLUSTER_MIN_VISITS): vol.All(
+            vol.Coerce(int), vol.Range(min=2, max=10)
+        ),
+        vol.Optional(CONF_ALERT_COOLDOWN_HOURS): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=48)
+        ),
     }
 )
 
@@ -167,6 +201,21 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             robot_id=call.data.get("robot"),
         )
 
+    async def handle_configure_health(call: ServiceCall) -> ServiceResponse:
+        entries = hass.config_entries.async_entries(DOMAIN)
+        if not entries:
+            raise HomeAssistantError(
+                "HA Whisker Pet ID is not configured yet. Add the integration first."
+            )
+        entry = entries[0]
+        updated_options = {**entry.options, **dict(call.data)}
+        hass.config_entries.async_update_entry(entry, options=updated_options)
+        return {
+            "success": True,
+            "entry_id": entry.entry_id,
+            "options": updated_options,
+        }
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_GET_PETS,
@@ -200,6 +249,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         SERVICE_GENERATE_HEALTH_SUMMARY,
         handle_generate_health_summary,
         schema=GENERATE_HEALTH_SUMMARY_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_CONFIGURE_HEALTH,
+        handle_configure_health,
+        schema=CONFIGURE_HEALTH_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
 

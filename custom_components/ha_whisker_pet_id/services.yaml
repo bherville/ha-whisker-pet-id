@@ -171,9 +171,9 @@ generate_health_summary:
         boolean:
     notify_service:
       name: Notify Service Override
-      description: Optional notify service name(s), comma-separated (e.g. notify.mobile_app_brads_iphone_17).
+      description: Optional notify service name(s), comma-separated (e.g. notify.family).
       required: false
-      example: "notify.mobile_app_brads_iphone_17"
+      example: "notify.family"
       selector:
         text:
     robot:
@@ -183,3 +183,89 @@ generate_health_summary:
       example: "Flex Room"
       selector:
         text:
+
+configure_health:
+  name: Configure AI Health Options
+  description: Persist HA Whisker Pet ID health summary schedule, AI Task entity, notify target, and cluster alert options.
+  fields:
+    ai_task_entity:
+      name: AI Task Entity
+      description: Home Assistant ai_task entity ID (e.g. ai_task.google_ai_task).
+      required: false
+      example: "ai_task.google_ai_task"
+      selector:
+        entity:
+          domain: ai_task
+    notify_service:
+      name: Notify Service Target
+      description: Home Assistant notify service name(s), comma-separated (e.g. notify.family).
+      required: false
+      example: "notify.family"
+      selector:
+        text:
+    enable_daily_summary:
+      name: Enable Daily Summary
+      description: Enable or disable the scheduled daily health summary.
+      required: false
+      selector:
+        boolean:
+    summary_hour:
+      name: Daily Summary Hour
+      description: Local hour (0-23) to run the daily health summary.
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 23
+          mode: box
+    summary_minute:
+      name: Daily Summary Minute
+      description: Local minute (0-59) to run the daily health summary.
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 59
+          mode: box
+    enable_push_alerts:
+      name: Enable Push Alerts
+      description: Enable or disable push notifications on daily summaries and repeat-visit clusters.
+      required: false
+      selector:
+        boolean:
+    health_window_hours:
+      name: Lookback Window (Hours)
+      description: Number of hours of PET_VISIT telemetry to analyze.
+      required: false
+      selector:
+        number:
+          min: 12
+          max: 168
+          mode: box
+    cluster_window_minutes:
+      name: Cluster Window (Minutes)
+      description: Sliding window in minutes for detecting repeat visits.
+      required: false
+      selector:
+        number:
+          min: 5
+          max: 60
+          mode: box
+    cluster_min_visits:
+      name: Cluster Minimum Visits
+      description: Minimum number of visits inside the window to flag a repeat-visit cluster.
+      required: false
+      selector:
+        number:
+          min: 2
+          max: 10
+          mode: box
+    alert_cooldown_hours:
+      name: Alert Cooldown (Hours)
+      description: Minimum hours between repeat cluster notifications per cat.
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 48
+          mode: box

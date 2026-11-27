@@ -165,6 +165,52 @@
           "description": "Optional Litter-Robot 5 name or serial."
         }
       }
+    },
+    "configure_health": {
+      "name": "Configure AI Health Options",
+      "description": "Persist HA Whisker Pet ID health summary schedule, AI Task entity, notify target, and cluster alert options.",
+      "fields": {
+        "ai_task_entity": {
+          "name": "AI Task Entity",
+          "description": "Home Assistant ai_task entity ID (e.g. ai_task.google_ai_task)."
+        },
+        "notify_service": {
+          "name": "Notify Service Target",
+          "description": "Home Assistant notify service name(s), comma-separated (e.g. notify.family)."
+        },
+        "enable_daily_summary": {
+          "name": "Enable Daily Summary",
+          "description": "Enable or disable the scheduled daily health summary."
+        },
+        "summary_hour": {
+          "name": "Daily Summary Hour",
+          "description": "Local hour (0-23) to run the daily health summary."
+        },
+        "summary_minute": {
+          "name": "Daily Summary Minute",
+          "description": "Local minute (0-59) to run the daily health summary."
+        },
+        "enable_push_alerts": {
+          "name": "Enable Push Alerts",
+          "description": "Enable or disable push notifications on daily summaries and repeat-visit clusters."
+        },
+        "health_window_hours": {
+          "name": "Lookback Window (Hours)",
+          "description": "Number of hours of PET_VISIT telemetry to analyze."
+        },
+        "cluster_window_minutes": {
+          "name": "Cluster Window (Minutes)",
+          "description": "Sliding window in minutes for detecting repeat visits."
+        },
+        "cluster_min_visits": {
+          "name": "Cluster Minimum Visits",
+          "description": "Minimum number of visits inside the window to flag a repeat-visit cluster."
+        },
+        "alert_cooldown_hours": {
+          "name": "Alert Cooldown (Hours)",
+          "description": "Minimum hours between repeat cluster notifications per cat."
+        }
+      }
     }
   }
 }
