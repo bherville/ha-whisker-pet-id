@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2 - 2026-11-27
+
+- **Expandable Health Alert Archive Rows:** Removed the `Source` column from `custom:whisker-health-archive-card` and made every alert row clickable (and keyboard-accessible) to expand an inline detail drawer showing the full source (`Repeat-Visit Cluster`, `AI Health Summary`, `Smart Cat ID Review`), severity, timestamps, notified services, and structured alert details.
+
 ## 0.4.1 - 2026-11-27
 
 - **Smart Cat ID Polish & Pagination:** Renamed `custom:whisker-auto-pet-id-card` to the friendlier **Smart Cat ID** naming (`Auto-Fix On`, `Weight Match`, `AI Photo` / `AI Video`, `Result` pills), added built-in pagination (`page_size`, `Prev` / `Next` controls) to both built-in cards, implemented `getGridOptions()` (`columns: "full"`) for wide Sections dashboard placement, and added a responsive `@container` layout so narrow columns never clip the rightmost result column.

@@ -1,6 +1,6 @@
 /* Built-in Lovelace cards for HA Whisker Pet ID */
 
-const CARD_VERSION = "0.4.1";
+const CARD_VERSION = "0.4.2";
 
 const DEFAULT_HEALTH_ENTITY = "sensor.ha_whisker_pet_id_health_summary";
 const DEFAULT_HISTORY_ENTITY = "sensor.ha_whisker_pet_id_alert_history";
@@ -296,6 +296,69 @@ const SHARED_STYLES = `
   tr:last-child td {
     border-bottom: none;
   }
+  .alert-row {
+    cursor: pointer;
+    transition: background 0.12s ease;
+  }
+  .alert-row:hover td {
+    background: var(--secondary-background-color, rgba(127, 127, 127, 0.08));
+  }
+  .alert-row:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: -2px;
+  }
+  .status-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+  }
+  .expand-icon {
+    display: inline-block;
+    width: 14px;
+    font-size: 0.75rem;
+    color: var(--secondary-text-color);
+    transition: transform 0.15s ease;
+    text-align: center;
+  }
+  .alert-row.expanded .expand-icon {
+    transform: rotate(90deg);
+  }
+  .detail-row td {
+    background: var(--secondary-background-color, rgba(127, 127, 127, 0.06));
+    padding: 10px 12px;
+  }
+  .detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px 14px;
+    font-size: 0.78rem;
+  }
+  .detail-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .detail-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--secondary-text-color);
+  }
+  .detail-value {
+    color: var(--primary-text-color);
+    word-break: break-word;
+  }
+  .detail-note {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--divider-color, rgba(127, 127, 127, 0.16));
+    font-size: 0.78rem;
+    color: var(--primary-text-color);
+    line-height: 1.4;
+    word-break: break-word;
+  }
   .inline-weight {
     display: none;
     font-size: 0.75rem;
@@ -416,6 +479,7 @@ class WhiskerHealthArchiveCard extends HTMLElement {
     };
     this._filter = "all";
     this._page = 0;
+    this._expandedIds = new Set();
     this._lastSig = "";
   }
 
@@ -475,6 +539,151 @@ class WhiskerHealthArchiveCard extends HTMLElement {
     if (val === "watch") return "warn";
     if (val === "alert") return "err";
     return "muted";
+  }
+
+  _formatSource(source) {
+    const val = String(source || "").toLowerCase();
+    if (val === "health_cluster") return "Repeat-Visit Cluster";
+    if (val === "health_summary") return "AI Health Summary";
+    if (val === "pet_id_review") return "Smart Cat ID Review";
+    return titleCaseWords(source || "alert");
+  }
+
+  _renderAlertDetailsHtml(item) {
+    const fields = [];
+    const addField = (label, value) => {
+      if (value === null || value === undefined || value === "") return;
+      fields.push(`
+        <div class="detail-item">
+          <span class="detail-label">${escapeHtml(label)}</span>
+          <span class="detail-value">${escapeHtml(value)}</span>
+        </div>
+      `);
+    };
+
+    const sourceRaw = String(item?.source || "").toLowerCase();
+    addField("Source", this._formatSource(item?.source));
+    addField("Severity", titleCaseWords(item?.severity || item?.status || "info"));
+    addField("Opened", formatTimestamp(item?.opened_at));
+    addField("Last Seen", formatTimestamp(item?.last_seen_at));
+    if (item?.resolved_at) {
+      addField("Resolved", formatTimestamp(item.resolved_at));
+    }
+    if (Array.isArray(item?.notified_services) && item.notified_services.length) {
+      addField("Notified", item.notified_services.join(", "));
+    }
+
+    const details =
+      item?.details && typeof item.details === "object" && !Array.isArray(item.details)
+        ? item.details
+        : {};
+    const consumedKeys = new Set();
+    let noteText = "";
+
+    if (sourceRaw === "health_cluster") {
+      if (details.count !== undefined) {
+        addField("Visits", String(details.count));
+        consumedKeys.add("count");
+      }
+      if (details.duration_minutes !== undefined) {
+        addField("Duration", `${details.duration_minutes} min`);
+        consumedKeys.add("duration_minutes");
+      }
+      if (details.zero_waste_count !== undefined) {
+        addField("Zero-Waste", String(details.zero_waste_count));
+        consumedKeys.add("zero_waste_count");
+      }
+      if (details.start || details.end) {
+        addField(
+          "Window",
+          `${formatTimestamp(details.start)} → ${formatTimestamp(details.end)}`
+        );
+        consumedKeys.add("start");
+        consumedKeys.add("end");
+      }
+      consumedKeys.add("pet_name");
+    } else if (sourceRaw === "health_summary") {
+      if (details.generation_mode) {
+        addField("Mode", titleCaseWords(details.generation_mode));
+        consumedKeys.add("generation_mode");
+      }
+      if (details.clusters_detected !== undefined) {
+        addField("Clusters", String(details.clusters_detected));
+        consumedKeys.add("clusters_detected");
+      }
+      if (details.flagged_visits_count !== undefined) {
+        addField("Flagged Visits", String(details.flagged_visits_count));
+        consumedKeys.add("flagged_visits_count");
+      }
+      if (
+        details.pet_statuses &&
+        typeof details.pet_statuses === "object" &&
+        !Array.isArray(details.pet_statuses)
+      ) {
+        const statusSummary = Object.entries(details.pet_statuses)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([pet, st]) => `${pet}: ${titleCaseWords(st || "unknown")}`)
+          .join(", ");
+        addField("Pet Statuses", statusSummary);
+        consumedKeys.add("pet_statuses");
+      }
+      if (details.alert_message) {
+        noteText = String(details.alert_message);
+        consumedKeys.add("alert_message");
+      }
+    } else if (sourceRaw === "pet_id_review") {
+      if (details.weight_lbs !== undefined && details.weight_lbs !== null) {
+        addField("Weight", `${Number(details.weight_lbs).toFixed(2)} lb`);
+        consumedKeys.add("weight_lbs");
+      }
+      if (details.local_time) {
+        addField("Visit Time", formatTimestamp(details.local_time));
+        consumedKeys.add("local_time");
+      }
+      if (details.stage) {
+        addField("Method", titleCaseWords(details.stage));
+        consumedKeys.add("stage");
+      }
+      if (details.confidence) {
+        addField("Confidence", titleCaseWords(details.confidence));
+        consumedKeys.add("confidence");
+      }
+      if (details.reasoning) {
+        noteText = String(details.reasoning);
+        consumedKeys.add("reasoning");
+      }
+    }
+
+    for (const [key, val] of Object.entries(details)) {
+      if (consumedKeys.has(key) || val === null || val === undefined || val === "") {
+        continue;
+      }
+      if (typeof val === "object") continue;
+      addField(titleCaseWords(key), String(val));
+    }
+
+    if (item?.alert_id) {
+      addField("Alert ID", String(item.alert_id));
+    }
+
+    const noteHtml = noteText
+      ? `<div class="detail-note">${escapeHtml(noteText)}</div>`
+      : "";
+
+    return `
+      <div class="detail-grid">${fields.join("")}</div>
+      ${noteHtml}
+    `;
+  }
+
+  _toggleRow(alertKey) {
+    if (!alertKey) return;
+    if (this._expandedIds.has(alertKey)) {
+      this._expandedIds.delete(alertKey);
+    } else {
+      this._expandedIds.add(alertKey);
+    }
+    this._render();
   }
 
   _render() {
@@ -575,25 +784,36 @@ class WhiskerHealthArchiveCard extends HTMLElement {
 
     const rowsHtml = pageRows.length
       ? pageRows
-          .map((item) => {
+          .map((item, idx) => {
             const status = String(item?.status || "active").toLowerCase();
             const sev = String(item?.severity || status).toLowerCase();
             const pillClass = status === "resolved" ? "resolved" : sev === "watch" ? "watch" : "active";
             const pets = Array.isArray(item?.pets) && item.pets.length ? item.pets.join(", ") : "Household";
             const opened = formatTimestamp(item?.opened_at || item?.last_seen_at);
-            const source = titleCaseWords(item?.source || "alert");
-            return `
-              <tr>
-                <td><span class="status-pill ${escapeHtml(pillClass)}">${escapeHtml(status)}</span></td>
+            const alertKey = String(
+              item?.alert_id || `${item?.source || "alert"}:${item?.opened_at || ""}:${start + idx}`
+            );
+            const isExpanded = this._expandedIds.has(alertKey);
+            const mainRow = `
+              <tr class="alert-row ${isExpanded ? "expanded" : ""}" data-alert-key="${escapeHtml(alertKey)}" tabindex="0" role="button" aria-expanded="${isExpanded ? "true" : "false"}">
+                <td>
+                  <span class="status-cell">
+                    <span class="expand-icon">▸</span>
+                    <span class="status-pill ${escapeHtml(pillClass)}">${escapeHtml(status)}</span>
+                  </span>
+                </td>
                 <td><strong>${escapeHtml(pets)}</strong></td>
                 <td>${escapeHtml(item?.headline || "—")}</td>
-                <td class="mono">${escapeHtml(source)}</td>
                 <td class="mono">${escapeHtml(opened)}</td>
               </tr>
             `;
+            const detailRow = isExpanded
+              ? `<tr class="detail-row"><td colspan="4">${this._renderAlertDetailsHtml(item)}</td></tr>`
+              : "";
+            return mainRow + detailRow;
           })
           .join("")
-      : `<tr><td colspan="5" class="empty">No alerts matching this filter.</td></tr>`;
+      : `<tr><td colspan="4" class="empty">No alerts matching this filter.</td></tr>`;
 
     const pagerHtml = renderPagerHtml(allFiltered.length, this._page, pageSize);
 
@@ -636,7 +856,6 @@ class WhiskerHealthArchiveCard extends HTMLElement {
                 <th>Status</th>
                 <th>Pet</th>
                 <th>Alert</th>
-                <th>Source</th>
                 <th>Opened</th>
               </tr>
             </thead>
@@ -654,6 +873,19 @@ class WhiskerHealthArchiveCard extends HTMLElement {
         this._filter = btn.getAttribute("data-filter") || "all";
         this._page = 0;
         this._render();
+      });
+    });
+
+    this.shadowRoot.querySelectorAll("tr.alert-row").forEach((row) => {
+      const key = row.getAttribute("data-alert-key") || "";
+      row.addEventListener("click", () => {
+        this._toggleRow(key);
+      });
+      row.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          this._toggleRow(key);
+        }
       });
     });
 
@@ -943,7 +1175,7 @@ if (!window.customCards.some((card) => card.type === "whisker-health-archive-car
     type: "whisker-health-archive-card",
     name: "Whisker Health & Alert Archive",
     description:
-      "Displays household health summary, interactive cat filter chips, and alert history table.",
+      "Displays household health summary, interactive cat filter chips, and expandable alert details.",
     preview: true,
     documentationURL:
       "https://gitlab.com/bherville/home-assistant/ha-whisker-pet-id",
