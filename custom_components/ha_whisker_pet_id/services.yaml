@@ -132,3 +132,54 @@ reassign_visit:
       default: true
       selector:
         boolean:
+
+generate_health_summary:
+  name: Generate AI Pet Health Summary
+  description: Generate household and per-cat Litter-Robot 5 health summaries using Home Assistant AI Task (Gemini) with automatic deterministic fallback.
+  fields:
+    hours:
+      name: Lookback Window (Hours)
+      description: Number of hours of PET_VISIT telemetry to analyze (defaults to configured option).
+      required: false
+      example: 48
+      selector:
+        number:
+          min: 12
+          max: 168
+          mode: box
+    ai_task_entity:
+      name: AI Task Entity
+      description: Optional ai_task entity ID override (defaults to configured option, e.g. ai_task.google_ai_task).
+      required: false
+      example: "ai_task.google_ai_task"
+      selector:
+        entity:
+          domain: ai_task
+    use_ai:
+      name: Use Gemini AI Task
+      description: Use configured AI Task (Gemini) when available; if false, compute deterministic summary only.
+      required: false
+      default: true
+      selector:
+        boolean:
+    notify:
+      name: Send Push Notification
+      description: Send the generated summary/alert to the configured or overridden notify service.
+      required: false
+      default: false
+      selector:
+        boolean:
+    notify_service:
+      name: Notify Service Override
+      description: Optional notify service name(s), comma-separated (e.g. notify.mobile_app_brads_iphone_17).
+      required: false
+      example: "notify.mobile_app_brads_iphone_17"
+      selector:
+        text:
+    robot:
+      name: Robot
+      description: Optional Litter-Robot 5 name or serial.
+      required: false
+      example: "Flex Room"
+      selector:
+        text:

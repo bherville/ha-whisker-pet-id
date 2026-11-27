@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0 - 2026-11-27
+
+### Minor Changes
+
+- Integrate Home Assistant AI Task (`ai_task.generate_data`, defaulting to `ai_task.google_ai_task`) for structured veterinary-style Litter-Robot 5 Pro household and per-cat health summaries, with automatic deterministic fallback if Gemini hits quota/spending caps or is unavailable.
+- Add repeat-visit cluster detection (sliding window, default `>= 3` visits within `20` minutes) and weight-mismatch caveats in `health.py`.
+- Add `WhiskerHealthCoordinator` with configurable options flow (`ai_task_entity`, `notify_service`, daily schedule `summary_hour`/`summary_minute`, cluster sensitivity, and alert cooldown).
+- Add household `sensor.ha_whisker_pet_id_health_summary`, per-cat `sensor.ha_whisker_pet_id_<pet>_health_summary` entities, and `binary_sensor.ha_whisker_pet_id_health_alert`.
+- Add `ha_whisker_pet_id.generate_health_summary` action with optional response data and push notification dispatch.
+
 ## 0.1.1 - 2026-11-25
 
 ### Patch Changes

@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Set up HA Whisker Pet ID",
-        "description": "Connects to your existing Whisker (litterrobot) integration to expose Litter-Robot 5 Pet ID visits, camera clips, and visit reassignment actions."
+        "description": "Connects to your existing Whisker (litterrobot) integration to expose Litter-Robot 5 Pet ID visits, camera clips, visit reassignment actions, and AI pet health summaries."
       }
     },
     "error": {
@@ -13,10 +13,41 @@
       "single_instance_allowed": "Already configured. Only a single instance is allowed."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure AI Health Summaries & Alerts",
+        "description": "Select your Home Assistant AI Task entity (e.g. Google AI Task), notification target, daily schedule, and visit clustering thresholds.",
+        "data": {
+          "ai_task_entity": "AI Task entity (Gemini)",
+          "notify_service": "Notify service target (comma-separated, e.g. notify.mobile_app_brads_iphone_17)",
+          "enable_daily_summary": "Enable scheduled daily health summary",
+          "summary_hour": "Daily summary hour (0-23)",
+          "summary_minute": "Daily summary minute (0-59)",
+          "enable_push_alerts": "Send push notifications for daily summaries and cluster alerts",
+          "health_window_hours": "Telemetry lookback window (hours)",
+          "cluster_window_minutes": "Repeat-visit cluster window (minutes)",
+          "cluster_min_visits": "Minimum visits to flag a repeat-visit cluster",
+          "alert_cooldown_hours": "Minimum hours between repeat cluster alerts per cat"
+        }
+      }
+    }
+  },
   "entity": {
     "sensor": {
       "flagged_visits": {
         "name": "Flagged visits"
+      },
+      "health_summary": {
+        "name": "Health summary"
+      },
+      "pet_health_summary": {
+        "name": "{pet_name} health summary"
+      }
+    },
+    "binary_sensor": {
+      "health_alert": {
+        "name": "Health alert"
       }
     }
   },
@@ -102,6 +133,36 @@
         "refresh": {
           "name": "Refresh Sensors",
           "description": "Refresh Home Assistant's Litter-Robot and Pet ID coordinators after updating."
+        }
+      }
+    },
+    "generate_health_summary": {
+      "name": "Generate AI Pet Health Summary",
+      "description": "Generate household and per-cat Litter-Robot 5 health summaries using Home Assistant AI Task (Gemini) with automatic deterministic fallback.",
+      "fields": {
+        "hours": {
+          "name": "Lookback Window (Hours)",
+          "description": "Number of hours of PET_VISIT telemetry to analyze (defaults to configured option)."
+        },
+        "ai_task_entity": {
+          "name": "AI Task Entity",
+          "description": "Optional ai_task entity ID override (defaults to configured option, e.g. ai_task.google_ai_task)."
+        },
+        "use_ai": {
+          "name": "Use Gemini AI Task",
+          "description": "Use configured AI Task (Gemini) when available; if false, compute deterministic summary only."
+        },
+        "notify": {
+          "name": "Send Push Notification",
+          "description": "Send the generated summary/alert to the configured or overridden notify service."
+        },
+        "notify_service": {
+          "name": "Notify Service Override",
+          "description": "Optional notify service name(s), comma-separated (e.g. notify.mobile_app_brads_iphone_17)."
+        },
+        "robot": {
+          "name": "Robot",
+          "description": "Optional Litter-Robot 5 name or serial."
         }
       }
     }

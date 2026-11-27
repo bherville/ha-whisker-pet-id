@@ -13,6 +13,7 @@ from homeassistant.core import (
     ServiceResponse,
     SupportsResponse,
 )
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
@@ -25,16 +26,17 @@ from .api import (
 from .const import (
     DEFAULT_MAX_CLIP_DELTA_SECONDS,
     DOMAIN,
+    SERVICE_GENERATE_HEALTH_SUMMARY,
     SERVICE_GET_CLIP_URLS,
     SERVICE_GET_PETS,
     SERVICE_LIST_VISITS,
     SERVICE_REASSIGN_VISIT,
 )
-from .coordinator import WhiskerPetIdCoordinator
+from .coordinator import WhiskerHealthCoordinator, WhiskerPetIdCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[str] = ["sensor"]
+PLATFORMS: list[str] = ["sensor", "binary_sensor"]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 GET_PETS_SCHEMA = vol.Schema(
@@ -74,9 +76,36 @@ REASSIGN_VISIT_SCHEMA = vol.Schema(
     }
 )
 
+GENERATE_HEALTH_SUMMARY_SCHEMA = vol.Schema(
+    {
+        vol.Optional("hours"): vol.All(vol.Coerce(int), vol.Range(min=12, max=168)),
+        vol.Optional("ai_task_entity"): cv.string,
+        vol.Optional("use_ai", default=True): cv.boolean,
+        vol.Optional("notify", default=False): cv.boolean,
+        vol.Optional("notify_service"): cv.string,
+        vol.Optional("robot"): cv.string,
+    }
+)
+
+
+def _iter_coordinators(
+    hass: HomeAssistant,
+) -> tuple[list[WhiskerPetIdCoordinator], list[WhiskerHealthCoordinator]]:
+    diag_list: list[WhiskerPetIdCoordinator] = []
+    health_list: list[WhiskerHealthCoordinator] = []
+    for item in hass.data.get(DOMAIN, {}).values():
+        if isinstance(item, dict):
+            if isinstance(item.get("diagnostics"), WhiskerPetIdCoordinator):
+                diag_list.append(item["diagnostics"])
+            if isinstance(item.get("health"), WhiskerHealthCoordinator):
+                health_list.append(item["health"])
+        elif isinstance(item, WhiskerPetIdCoordinator):
+            diag_list.append(item)
+    return diag_list, health_list
+
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Register HA Whisker Pet ID response-returning service actions."""
+    """Register HA Whisker Pet ID service actions."""
     hass.data.setdefault(DOMAIN, {})
 
     async def handle_get_pets(call: ServiceCall) -> ServiceResponse:
@@ -116,10 +145,27 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             refresh=bool(call.data.get("refresh", True)),
         )
         if call.data.get("refresh", True):
-            for coordinator in hass.data.get(DOMAIN, {}).values():
-                if isinstance(coordinator, WhiskerPetIdCoordinator):
-                    await coordinator.async_request_refresh()
+            diag_list, _ = _iter_coordinators(hass)
+            for coordinator in diag_list:
+                await coordinator.async_request_refresh()
         return result
+
+    async def handle_generate_health_summary(call: ServiceCall) -> ServiceResponse:
+        _, health_list = _iter_coordinators(hass)
+        if not health_list:
+            raise HomeAssistantError(
+                "HA Whisker Pet ID is not configured yet. Add the integration first."
+            )
+        health_coord = health_list[0]
+        return await health_coord.async_run_health_summary(
+            trigger="service",
+            use_ai=bool(call.data.get("use_ai", True)),
+            notify=bool(call.data.get("notify", False)),
+            window_hours=call.data.get("hours"),
+            ai_task_entity=call.data.get("ai_task_entity"),
+            notify_service=call.data.get("notify_service"),
+            robot_id=call.data.get("robot"),
+        )
 
     hass.services.async_register(
         DOMAIN,
@@ -149,24 +195,51 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         schema=REASSIGN_VISIT_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GENERATE_HEALTH_SUMMARY,
+        handle_generate_health_summary,
+        schema=GENERATE_HEALTH_SUMMARY_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
 
     return True
 
 
+async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload config entry when options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up HA Whisker Pet ID from a config entry."""
-    coordinator = WhiskerPetIdCoordinator(hass, entry)
-    await coordinator.async_config_entry_first_refresh()
+    health_coordinator = WhiskerHealthCoordinator(hass, entry)
+    await health_coordinator.async_config_entry_first_refresh()
+    health_coordinator.start_schedule()
+
+    diag_coordinator = WhiskerPetIdCoordinator(hass, entry)
+    diag_coordinator.attach_health_coordinator(health_coordinator)
+    await diag_coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = coordinator
+    hass.data[DOMAIN][entry.entry_id] = {
+        "diagnostics": diag_coordinator,
+        "health": health_coordinator,
+    }
 
+    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    runtime = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if isinstance(runtime, dict) and isinstance(
+        runtime.get("health"), WhiskerHealthCoordinator
+    ):
+        runtime["health"].stop_schedule()
+
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok and DOMAIN in hass.data:
         hass.data[DOMAIN].pop(entry.entry_id, None)
