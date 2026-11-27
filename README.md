@@ -20,11 +20,13 @@ It piggybacks directly on Home Assistant's already-authenticated **Whisker (`lit
 - `ha_whisker_pet_id.reassign_visit` — Reassigns (`from_pet` + `to_pet`), assigns (`to_pet`), or unassigns (`from_pet` only) a `PET_VISIT` `event_id` via Whisker's LR5 `PATCH /robots/{serial}/activities` endpoint and refreshes the `litterrobot` coordinator.
 - `ha_whisker_pet_id.generate_health_summary` — Computes multi-cat health metrics & cluster checks, calls Home Assistant `ai_task.generate_data` (`ai_task.google_ai_task`) with automatic deterministic fallback, updates all summary sensors, and optionally dispatches push notifications.
 - `ha_whisker_pet_id.verify_visits_with_ai` — Evaluates flagged LR5 visits using 0-token Hybrid Fast-Path weight separation + multimodal Gemini Vision (`ref_roster_sheet.jpg` + thumbnail / MP4 video escalation via internal `media_source`), honoring safety guardrails.
+- `ha_whisker_pet_id.get_alert_history` — Queries persistent multi-month alert history (`health_cluster`, `health_summary`, `pet_id_review`) filtered by `pet`, `days`, `severity`, `source`, or `active_only`.
 
 ## Entities
 
 - `sensor.ha_whisker_pet_id_flagged_visits` — Tracks the count and summary attributes of recent visits with Pet ID anomalies.
 - `sensor.ha_whisker_pet_id_ai_pet_id_status` — Shows Auto-Pet-ID mode (`off` / `dry_run` / `auto_reassign` / `backoff`), clean median baselines, action counters, and the last 25 decisions.
+- `sensor.ha_whisker_pet_id_alert_history` — Tracks active alert count (`active_alerts`, `recent_alerts` up to 25, and per-cat/source totals across up to 200 persisted events).
 - `sensor.ha_whisker_pet_id_health_summary` — Household health status (`normal` / `watch` / `alert`) with `headline`, `summary_markdown`, `alert_pets`, `generation_mode`, and cluster attributes.
 - `sensor.ha_whisker_pet_id_<pet>_health_summary` — Per-cat health status, rolling counts, duration/weight metrics, and narrative summary.
 - `binary_sensor.ha_whisker_pet_id_health_alert` — Turns `on` (`problem`) when overall health status is `watch`/`alert` or a repeat-visit cluster is detected.

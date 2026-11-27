@@ -49,6 +49,9 @@
       "ai_pet_id_status": {
         "name": "AI Pet ID status"
       },
+      "alert_history": {
+        "name": "Alert history"
+      },
       "health_summary": {
         "name": "Health summary"
       },
@@ -282,6 +285,36 @@
         "robot": {
           "name": "Robot",
           "description": "Optional Litter-Robot 5 name or serial."
+        }
+      }
+    },
+    "get_alert_history": {
+      "name": "Get Historical Pet Alerts",
+      "description": "Query persistent HA Whisker Pet ID historical health clusters, summary watches/alerts, and Pet ID review alerts.",
+      "fields": {
+        "pet": {
+          "name": "Pet Name",
+          "description": "Filter alerts involving a specific pet (e.g. Lexi)."
+        },
+        "days": {
+          "name": "Lookback Days",
+          "description": "Optional number of days back to include."
+        },
+        "severity": {
+          "name": "Severity",
+          "description": "Filter by severity (watch or alert)."
+        },
+        "source": {
+          "name": "Alert Source",
+          "description": "Filter by alert source (health_cluster, health_summary, or pet_id_review)."
+        },
+        "active_only": {
+          "name": "Active Alerts Only",
+          "description": "Return only currently unresolved alerts."
+        },
+        "limit": {
+          "name": "Max Results",
+          "description": "Maximum number of alert records to return."
         }
       }
     }

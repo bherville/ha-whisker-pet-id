@@ -12,6 +12,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .alert_history import AlertHistoryManager
 from .const import DOMAIN
 from .coordinator import WhiskerHealthCoordinator, WhiskerPetIdCoordinator
 
@@ -36,12 +37,15 @@ async def async_setup_entry(
     runtime = hass.data[DOMAIN][entry.entry_id]
     diag_coordinator: WhiskerPetIdCoordinator = runtime["diagnostics"]
     health_coordinator: WhiskerHealthCoordinator = runtime["health"]
+    alert_history: AlertHistoryManager | None = runtime.get("alert_history")
 
     entities: list[SensorEntity] = [
         WhiskerFlaggedVisitsSensor(diag_coordinator, entry),
         WhiskerAiPetIdSensor(diag_coordinator, entry),
         WhiskerHealthSummarySensor(health_coordinator, entry),
     ]
+    if alert_history is not None:
+        entities.append(WhiskerAlertHistorySensor(alert_history, entry))
 
     known_pets: set[str] = set()
     pets_map = (health_coordinator.data or {}).get("pets", {})
@@ -136,6 +140,48 @@ class WhiskerAiPetIdSensor(
         """Return clean baselines, counters, and last 25 AI Pet ID decisions."""
         payload = dict(self.coordinator.get_ai_status_payload())
         payload.pop("state", None)
+        return payload
+
+
+class WhiskerAlertHistorySensor(SensorEntity):
+    """Persistent active & historical alert archive sensor."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "alert_history"
+    _attr_icon = "mdi:bell-badge-outline"
+    _attr_should_poll = False
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(
+        self, alert_history: AlertHistoryManager, entry: ConfigEntry
+    ) -> None:
+        """Initialize the persistent alert history sensor."""
+        self._alert_history = alert_history
+        self._attr_unique_id = f"{entry.entry_id}_alert_history"
+        self._attr_device_info = _service_device_info(entry)
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to alert history updates."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            self._alert_history.add_listener(self._handle_history_update)
+        )
+
+    @callback
+    def _handle_history_update(self) -> None:
+        """Write updated state when an alert opens or resolves."""
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self) -> int:
+        """Return number of currently active alerts in the archive."""
+        return int(self._alert_history.get_sensor_payload().get("active_count", 0))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return active alerts, recent 25 alerts, and per-cat/source totals."""
+        payload = dict(self._alert_history.get_sensor_payload())
+        payload.pop("active_count", None)
         return payload
 
 

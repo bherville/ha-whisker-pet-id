@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1 - 2026-11-27
+
+### Patch Changes
+
+- Add persistent historical alert tracking (`alert_history.py`, `.storage/ha_whisker_pet_id.alert_history`, up to 200 entries) surviving Home Assistant restarts and 10-day recorder purges.
+- Auto-log and auto-resolve repeat-visit clusters (`health_cluster`), household/per-pet AI summary `watch`/`alert` states (`health_summary`), and uncertain Pet ID review items (`pet_id_review`), emitting `ha_whisker_pet_id_alert` bus events for HA Logbook.
+- Add `sensor.ha_whisker_pet_id_alert_history` entity and `ha_whisker_pet_id.get_alert_history` query action (`pet`, `days`, `severity`, `source`, `active_only`, `limit`).
+
 ## 0.3.0 - 2026-11-27
 
 ### Minor Changes

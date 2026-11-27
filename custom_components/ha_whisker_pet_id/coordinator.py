@@ -19,6 +19,7 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from .alert_history import AlertHistoryManager
 from .api import (
     async_get_pets_summary,
     async_list_visits,
@@ -108,6 +109,11 @@ class WhiskerHealthCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._daily_unsub: CALLBACK_TYPE | None = None
         self._last_alert_by_pet: dict[str, tuple[str, datetime]] = {}
         self._bootstrap_done = False
+        self._alert_history: AlertHistoryManager | None = None
+
+    def attach_alert_history(self, alert_history: AlertHistoryManager) -> None:
+        """Attach persistent alert history manager."""
+        self._alert_history = alert_history
 
     def option(self, key: str, default: Any) -> Any:
         """Read a configured option from the entry with fallback default."""
@@ -147,10 +153,13 @@ class WhiskerHealthCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Bootstrap deterministic health snapshot on initial setup without spending LLM tokens."""
-        return await self.async_build_report(
+        report = await self.async_build_report(
             trigger="startup" if not self._bootstrap_done else "refresh",
             use_ai=False,
         )
+        if self._alert_history is not None:
+            await self._alert_history.async_record_health_report(report)
+        return report
 
     async def async_build_report(
         self,
@@ -331,6 +340,11 @@ class WhiskerHealthCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if sent_to and report.get("clusters"):
                     self.mark_clusters_alerted(report["clusters"])
 
+        if self._alert_history is not None:
+            await self._alert_history.async_record_health_report(
+                report, notified_services=sent_to
+            )
+
         return {**report, "notified_services": sent_to}
 
 
@@ -347,6 +361,7 @@ class WhiskerPetIdCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=timedelta(minutes=DEFAULT_SCAN_INTERVAL_MINUTES),
         )
         self._health_coordinator: WhiskerHealthCoordinator | None = None
+        self._alert_history: AlertHistoryManager | None = None
         self._store: Store[dict[str, Any]] = Store(
             hass, AUTO_ID_STORE_VERSION, AUTO_ID_STORE_KEY
         )
@@ -378,6 +393,10 @@ class WhiskerPetIdCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     ) -> None:
         """Attach health coordinator for reactive cluster alerts on poll updates."""
         self._health_coordinator = health_coordinator
+
+    def attach_alert_history(self, alert_history: AlertHistoryManager) -> None:
+        """Attach persistent alert history manager."""
+        self._alert_history = alert_history
 
     async def async_load_store(self) -> None:
         """Load persisted processed event IDs, baselines, and decision audit log."""
@@ -955,6 +974,18 @@ class WhiskerPetIdCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         message="\n".join(notify_lines)[:1800],
                         tag="whisker_pet_id_verification",
                     )
+
+            if self._alert_history is not None:
+                for item in decisions:
+                    if item["action"] == "needs_review":
+                        await self._alert_history.async_record_pet_id_review(
+                            item,
+                            notified_services=notified_to if notify_mode != "none" else [],
+                        )
+                    elif item["action"] in ("reassign", "assign", "unassign"):
+                        await self._alert_history.async_resolve_pet_id_review(
+                            str(item["event_id"])
+                        )
 
             # Update entity snapshots immediately
             if isinstance(self.data, dict):

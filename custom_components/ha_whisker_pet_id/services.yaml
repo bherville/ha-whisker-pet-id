@@ -392,3 +392,60 @@ verify_visits_with_ai:
       example: "Flex Room"
       selector:
         text:
+
+get_alert_history:
+  name: Get Historical Pet Alerts
+  description: Query persistent HA Whisker Pet ID historical health clusters, summary watches/alerts, and Pet ID review alerts.
+  fields:
+    pet:
+      name: Pet Name
+      description: Filter alerts involving a specific pet (e.g. Lexi).
+      required: false
+      example: "Lexi"
+      selector:
+        text:
+    days:
+      name: Lookback Days
+      description: Optional number of days back to include.
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 365
+          mode: box
+    severity:
+      name: Severity
+      description: Filter by severity (watch or alert).
+      required: false
+      selector:
+        select:
+          options:
+            - "watch"
+            - "alert"
+    source:
+      name: Alert Source
+      description: Filter by alert source (health_cluster, health_summary, or pet_id_review).
+      required: false
+      selector:
+        select:
+          options:
+            - "health_cluster"
+            - "health_summary"
+            - "pet_id_review"
+    active_only:
+      name: Active Alerts Only
+      description: Return only currently unresolved alerts.
+      required: false
+      default: false
+      selector:
+        boolean:
+    limit:
+      name: Max Results
+      description: Maximum number of alert records to return.
+      required: false
+      default: 50
+      selector:
+        number:
+          min: 1
+          max: 200
+          mode: box

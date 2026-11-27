@@ -17,6 +17,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
+from .alert_history import AlertHistoryManager
 from .api import (
     async_get_clip_urls,
     async_get_pets_summary,
@@ -24,6 +25,8 @@ from .api import (
     async_reassign_visit,
 )
 from .const import (
+    ALERT_SEVERITIES,
+    ALERT_SOURCES,
     AUTO_PET_ID_CONFIDENCE_LEVELS,
     AUTO_PET_ID_MODES,
     AUTO_PET_ID_NOTIFY_MODES,
@@ -49,6 +52,7 @@ from .const import (
     DOMAIN,
     SERVICE_CONFIGURE_HEALTH,
     SERVICE_GENERATE_HEALTH_SUMMARY,
+    SERVICE_GET_ALERT_HISTORY,
     SERVICE_GET_CLIP_URLS,
     SERVICE_GET_PETS,
     SERVICE_LIST_VISITS,
@@ -157,6 +161,17 @@ VERIFY_VISITS_WITH_AI_SCHEMA = vol.Schema(
     }
 )
 
+GET_ALERT_HISTORY_SCHEMA = vol.Schema(
+    {
+        vol.Optional("pet"): cv.string,
+        vol.Optional("days"): vol.All(vol.Coerce(int), vol.Range(min=1, max=365)),
+        vol.Optional("severity"): vol.In(ALERT_SEVERITIES),
+        vol.Optional("source"): vol.In(ALERT_SOURCES),
+        vol.Optional("active_only", default=False): cv.boolean,
+        vol.Optional("limit", default=50): vol.All(vol.Coerce(int), vol.Range(min=1, max=200)),
+    }
+)
+
 
 def _iter_coordinators(
     hass: HomeAssistant,
@@ -172,6 +187,16 @@ def _iter_coordinators(
         elif isinstance(item, WhiskerPetIdCoordinator):
             diag_list.append(item)
     return diag_list, health_list
+
+
+def _iter_alert_histories(hass: HomeAssistant) -> list[AlertHistoryManager]:
+    histories: list[AlertHistoryManager] = []
+    for item in hass.data.get(DOMAIN, {}).values():
+        if isinstance(item, dict) and isinstance(
+            item.get("alert_history"), AlertHistoryManager
+        ):
+            histories.append(item["alert_history"])
+    return histories
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -217,6 +242,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             robot_id=call.data.get("robot"),
             refresh=bool(call.data.get("refresh", True)),
         )
+        for history in _iter_alert_histories(hass):
+            await history.async_resolve_pet_id_review(call.data["event_id"])
         if call.data.get("refresh", True):
             diag_list, _ = _iter_coordinators(hass)
             for coordinator in diag_list:
@@ -271,6 +298,21 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             robot_id=call.data.get("robot"),
         )
 
+    async def handle_get_alert_history(call: ServiceCall) -> ServiceResponse:
+        histories = _iter_alert_histories(hass)
+        if not histories:
+            raise HomeAssistantError(
+                "HA Whisker Pet ID is not configured yet. Add the integration first."
+            )
+        return histories[0].query(
+            pet=call.data.get("pet"),
+            days=call.data.get("days"),
+            severity=call.data.get("severity"),
+            source=call.data.get("source"),
+            active_only=bool(call.data.get("active_only", False)),
+            limit=int(call.data.get("limit", 50)),
+        )
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_GET_PETS,
@@ -320,6 +362,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         schema=VERIFY_VISITS_WITH_AI_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_ALERT_HISTORY,
+        handle_get_alert_history,
+        schema=GET_ALERT_HISTORY_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
 
     return True
 
@@ -331,12 +380,17 @@ async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up HA Whisker Pet ID from a config entry."""
+    alert_history = AlertHistoryManager(hass)
+    await alert_history.async_load()
+
     health_coordinator = WhiskerHealthCoordinator(hass, entry)
+    health_coordinator.attach_alert_history(alert_history)
     await health_coordinator.async_config_entry_first_refresh()
     health_coordinator.start_schedule()
 
     diag_coordinator = WhiskerPetIdCoordinator(hass, entry)
     await diag_coordinator.async_load_store()
+    diag_coordinator.attach_alert_history(alert_history)
     diag_coordinator.attach_health_coordinator(health_coordinator)
     await diag_coordinator.async_config_entry_first_refresh()
     diag_coordinator.start_reactive_listener()
@@ -345,6 +399,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = {
         "diagnostics": diag_coordinator,
         "health": health_coordinator,
+        "alert_history": alert_history,
     }
 
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))

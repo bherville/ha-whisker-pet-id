@@ -72,6 +72,13 @@ MEDIA_STORAGE_DIRNAME = "ha_whisker_pet_id_media"
 AUTO_ID_STORE_KEY = f"{DOMAIN}.auto_id_state"
 AUTO_ID_STORE_VERSION = 1
 
+ALERT_HISTORY_STORE_KEY = f"{DOMAIN}.alert_history"
+ALERT_HISTORY_STORE_VERSION = 1
+ALERT_HISTORY_MAX_ENTRIES = 200
+EVENT_ALERT = f"{DOMAIN}_alert"
+ALERT_SOURCES = ("health_cluster", "health_summary", "pet_id_review")
+ALERT_SEVERITIES = ("watch", "alert")
+
 SERVICE_GET_PETS = "get_pets"
 SERVICE_LIST_VISITS = "list_visits"
 SERVICE_GET_CLIP_URLS = "get_clip_urls"
@@ -79,3 +86,4 @@ SERVICE_REASSIGN_VISIT = "reassign_visit"
 SERVICE_GENERATE_HEALTH_SUMMARY = "generate_health_summary"
 SERVICE_CONFIGURE_HEALTH = "configure_health"
 SERVICE_VERIFY_VISITS_WITH_AI = "verify_visits_with_ai"
+SERVICE_GET_ALERT_HISTORY = "get_alert_history"
