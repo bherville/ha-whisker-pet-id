@@ -24,16 +24,27 @@ from .api import (
     async_reassign_visit,
 )
 from .const import (
+    AUTO_PET_ID_CONFIDENCE_LEVELS,
+    AUTO_PET_ID_MODES,
+    AUTO_PET_ID_NOTIFY_MODES,
     CONF_AI_TASK_ENTITY,
     CONF_ALERT_COOLDOWN_HOURS,
+    CONF_AUTO_PET_ID_CLIP_DELAY_SECONDS,
+    CONF_AUTO_PET_ID_MAX_PER_RUN,
+    CONF_AUTO_PET_ID_MIN_CONFIDENCE,
+    CONF_AUTO_PET_ID_MODE,
+    CONF_AUTO_PET_ID_NOTIFY,
+    CONF_AUTO_UNASSIGN_SCALE_GLITCHES,
     CONF_CLUSTER_MIN_VISITS,
     CONF_CLUSTER_WINDOW_MINUTES,
     CONF_ENABLE_DAILY_SUMMARY,
+    CONF_ENABLE_HYBRID_FAST_PATH,
     CONF_ENABLE_PUSH_ALERTS,
     CONF_HEALTH_WINDOW_HOURS,
     CONF_NOTIFY_SERVICE,
     CONF_SUMMARY_HOUR,
     CONF_SUMMARY_MINUTE,
+    CONF_VIDEO_ESCALATION,
     DEFAULT_MAX_CLIP_DELTA_SECONDS,
     DOMAIN,
     SERVICE_CONFIGURE_HEALTH,
@@ -42,6 +53,8 @@ from .const import (
     SERVICE_GET_PETS,
     SERVICE_LIST_VISITS,
     SERVICE_REASSIGN_VISIT,
+    SERVICE_VERIFY_VISITS_WITH_AI,
+    VIDEO_ESCALATION_MODES,
 )
 from .coordinator import WhiskerHealthCoordinator, WhiskerPetIdCoordinator
 
@@ -118,6 +131,29 @@ CONFIGURE_HEALTH_SCHEMA = vol.Schema(
         vol.Optional(CONF_ALERT_COOLDOWN_HOURS): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=48)
         ),
+        vol.Optional(CONF_AUTO_PET_ID_MODE): vol.In(AUTO_PET_ID_MODES),
+        vol.Optional(CONF_ENABLE_HYBRID_FAST_PATH): cv.boolean,
+        vol.Optional(CONF_VIDEO_ESCALATION): vol.In(VIDEO_ESCALATION_MODES),
+        vol.Optional(CONF_AUTO_PET_ID_MIN_CONFIDENCE): vol.In(AUTO_PET_ID_CONFIDENCE_LEVELS),
+        vol.Optional(CONF_AUTO_UNASSIGN_SCALE_GLITCHES): cv.boolean,
+        vol.Optional(CONF_AUTO_PET_ID_NOTIFY): vol.In(AUTO_PET_ID_NOTIFY_MODES),
+        vol.Optional(CONF_AUTO_PET_ID_MAX_PER_RUN): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=15)
+        ),
+        vol.Optional(CONF_AUTO_PET_ID_CLIP_DELAY_SECONDS): vol.All(
+            vol.Coerce(int), vol.Range(min=30, max=300)
+        ),
+    }
+)
+
+VERIFY_VISITS_WITH_AI_SCHEMA = vol.Schema(
+    {
+        vol.Optional("event_id"): cv.string,
+        vol.Optional("dry_run"): cv.boolean,
+        vol.Optional("limit", default=5): vol.All(vol.Coerce(int), vol.Range(min=1, max=25)),
+        vol.Optional("video_escalation"): vol.In(VIDEO_ESCALATION_MODES),
+        vol.Optional("force", default=False): cv.boolean,
+        vol.Optional("robot"): cv.string,
     }
 )
 
@@ -149,6 +185,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         )
 
     async def handle_list_visits(call: ServiceCall) -> ServiceResponse:
+        diag_list, _ = _iter_coordinators(hass)
+        baselines = diag_list[0]._clean_baselines if diag_list else None
         return await async_list_visits(
             hass,
             robot_id=call.data.get("robot"),
@@ -160,6 +198,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             max_clip_delta_seconds=int(
                 call.data.get("max_clip_delta_seconds", DEFAULT_MAX_CLIP_DELTA_SECONDS)
             ),
+            baseline_overrides=baselines or None,
         )
 
     async def handle_get_clip_urls(call: ServiceCall) -> ServiceResponse:
@@ -216,6 +255,22 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             "options": updated_options,
         }
 
+    async def handle_verify_visits_with_ai(call: ServiceCall) -> ServiceResponse:
+        diag_list, _ = _iter_coordinators(hass)
+        if not diag_list:
+            raise HomeAssistantError(
+                "HA Whisker Pet ID is not configured yet. Add the integration first."
+            )
+        return await diag_list[0].async_verify_visits_with_ai(
+            trigger="service",
+            event_id=call.data.get("event_id"),
+            dry_run=call.data.get("dry_run"),
+            limit=int(call.data.get("limit", 5)),
+            video_escalation=call.data.get("video_escalation"),
+            force=bool(call.data.get("force", False)),
+            robot_id=call.data.get("robot"),
+        )
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_GET_PETS,
@@ -258,6 +313,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         schema=CONFIGURE_HEALTH_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_VERIFY_VISITS_WITH_AI,
+        handle_verify_visits_with_ai,
+        schema=VERIFY_VISITS_WITH_AI_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
 
     return True
 
@@ -274,8 +336,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     health_coordinator.start_schedule()
 
     diag_coordinator = WhiskerPetIdCoordinator(hass, entry)
+    await diag_coordinator.async_load_store()
     diag_coordinator.attach_health_coordinator(health_coordinator)
     await diag_coordinator.async_config_entry_first_refresh()
+    diag_coordinator.start_reactive_listener()
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {
@@ -291,10 +355,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     runtime = hass.data.get(DOMAIN, {}).get(entry.entry_id)
-    if isinstance(runtime, dict) and isinstance(
-        runtime.get("health"), WhiskerHealthCoordinator
-    ):
-        runtime["health"].stop_schedule()
+    if isinstance(runtime, dict):
+        if isinstance(runtime.get("health"), WhiskerHealthCoordinator):
+            runtime["health"].stop_schedule()
+        if isinstance(runtime.get("diagnostics"), WhiskerPetIdCoordinator):
+            runtime["diagnostics"].stop_reactive_listener()
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok and DOMAIN in hass.data:

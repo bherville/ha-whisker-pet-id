@@ -13,27 +13,47 @@ from homeassistant.helpers import selector
 
 from .api import get_litterrobot_runtime, get_lr5_robots
 from .const import (
+    AUTO_PET_ID_CONFIDENCE_LEVELS,
+    AUTO_PET_ID_MODES,
+    AUTO_PET_ID_NOTIFY_MODES,
     CONF_AI_TASK_ENTITY,
     CONF_ALERT_COOLDOWN_HOURS,
+    CONF_AUTO_PET_ID_CLIP_DELAY_SECONDS,
+    CONF_AUTO_PET_ID_MAX_PER_RUN,
+    CONF_AUTO_PET_ID_MIN_CONFIDENCE,
+    CONF_AUTO_PET_ID_MODE,
+    CONF_AUTO_PET_ID_NOTIFY,
+    CONF_AUTO_UNASSIGN_SCALE_GLITCHES,
     CONF_CLUSTER_MIN_VISITS,
     CONF_CLUSTER_WINDOW_MINUTES,
     CONF_ENABLE_DAILY_SUMMARY,
+    CONF_ENABLE_HYBRID_FAST_PATH,
     CONF_ENABLE_PUSH_ALERTS,
     CONF_HEALTH_WINDOW_HOURS,
     CONF_NOTIFY_SERVICE,
     CONF_SUMMARY_HOUR,
     CONF_SUMMARY_MINUTE,
+    CONF_VIDEO_ESCALATION,
     DEFAULT_AI_TASK_ENTITY,
     DEFAULT_ALERT_COOLDOWN_HOURS,
+    DEFAULT_AUTO_PET_ID_CLIP_DELAY_SECONDS,
+    DEFAULT_AUTO_PET_ID_MAX_PER_RUN,
+    DEFAULT_AUTO_PET_ID_MIN_CONFIDENCE,
+    DEFAULT_AUTO_PET_ID_MODE,
+    DEFAULT_AUTO_PET_ID_NOTIFY,
+    DEFAULT_AUTO_UNASSIGN_SCALE_GLITCHES,
     DEFAULT_CLUSTER_MIN_VISITS,
     DEFAULT_CLUSTER_WINDOW_MINUTES,
     DEFAULT_ENABLE_DAILY_SUMMARY,
+    DEFAULT_ENABLE_HYBRID_FAST_PATH,
     DEFAULT_ENABLE_PUSH_ALERTS,
     DEFAULT_HEALTH_WINDOW_HOURS,
     DEFAULT_NOTIFY_SERVICE,
     DEFAULT_SUMMARY_HOUR,
     DEFAULT_SUMMARY_MINUTE,
+    DEFAULT_VIDEO_ESCALATION,
     DOMAIN,
+    VIDEO_ESCALATION_MODES,
 )
 
 
@@ -84,6 +104,14 @@ class WhiskerPetIdConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             CONF_CLUSTER_WINDOW_MINUTES: DEFAULT_CLUSTER_WINDOW_MINUTES,
                             CONF_CLUSTER_MIN_VISITS: DEFAULT_CLUSTER_MIN_VISITS,
                             CONF_ALERT_COOLDOWN_HOURS: DEFAULT_ALERT_COOLDOWN_HOURS,
+                            CONF_AUTO_PET_ID_MODE: DEFAULT_AUTO_PET_ID_MODE,
+                            CONF_ENABLE_HYBRID_FAST_PATH: DEFAULT_ENABLE_HYBRID_FAST_PATH,
+                            CONF_VIDEO_ESCALATION: DEFAULT_VIDEO_ESCALATION,
+                            CONF_AUTO_PET_ID_MIN_CONFIDENCE: DEFAULT_AUTO_PET_ID_MIN_CONFIDENCE,
+                            CONF_AUTO_UNASSIGN_SCALE_GLITCHES: DEFAULT_AUTO_UNASSIGN_SCALE_GLITCHES,
+                            CONF_AUTO_PET_ID_NOTIFY: DEFAULT_AUTO_PET_ID_NOTIFY,
+                            CONF_AUTO_PET_ID_MAX_PER_RUN: DEFAULT_AUTO_PET_ID_MAX_PER_RUN,
+                            CONF_AUTO_PET_ID_CLIP_DELAY_SECONDS: DEFAULT_AUTO_PET_ID_CLIP_DELAY_SECONDS,
                         },
                     )
 
@@ -95,12 +123,12 @@ class WhiskerPetIdConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class WhiskerPetIdOptionsFlowHandler(config_entries.OptionsFlow):
-    """Options flow for configuring AI Task health summaries and alerts."""
+    """Options flow for configuring AI health summaries and Gemini Auto-Pet-ID."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Manage AI health summary schedule and push notification options."""
+        """Manage AI health summary schedule, push alerts, and Gemini Auto-Pet-ID options."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
@@ -117,6 +145,73 @@ class WhiskerPetIdOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_NOTIFY_SERVICE,
                     default=opts.get(CONF_NOTIFY_SERVICE, DEFAULT_NOTIFY_SERVICE),
                 ): selector.TextSelector(),
+                vol.Optional(
+                    CONF_AUTO_PET_ID_MODE,
+                    default=opts.get(CONF_AUTO_PET_ID_MODE, DEFAULT_AUTO_PET_ID_MODE),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=list(AUTO_PET_ID_MODES),
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Optional(
+                    CONF_ENABLE_HYBRID_FAST_PATH,
+                    default=opts.get(
+                        CONF_ENABLE_HYBRID_FAST_PATH, DEFAULT_ENABLE_HYBRID_FAST_PATH
+                    ),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_VIDEO_ESCALATION,
+                    default=opts.get(CONF_VIDEO_ESCALATION, DEFAULT_VIDEO_ESCALATION),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=list(VIDEO_ESCALATION_MODES),
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Optional(
+                    CONF_AUTO_PET_ID_MIN_CONFIDENCE,
+                    default=opts.get(
+                        CONF_AUTO_PET_ID_MIN_CONFIDENCE,
+                        DEFAULT_AUTO_PET_ID_MIN_CONFIDENCE,
+                    ),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=list(AUTO_PET_ID_CONFIDENCE_LEVELS),
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Optional(
+                    CONF_AUTO_UNASSIGN_SCALE_GLITCHES,
+                    default=opts.get(
+                        CONF_AUTO_UNASSIGN_SCALE_GLITCHES,
+                        DEFAULT_AUTO_UNASSIGN_SCALE_GLITCHES,
+                    ),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_AUTO_PET_ID_NOTIFY,
+                    default=opts.get(
+                        CONF_AUTO_PET_ID_NOTIFY, DEFAULT_AUTO_PET_ID_NOTIFY
+                    ),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=list(AUTO_PET_ID_NOTIFY_MODES),
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Optional(
+                    CONF_AUTO_PET_ID_MAX_PER_RUN,
+                    default=opts.get(
+                        CONF_AUTO_PET_ID_MAX_PER_RUN, DEFAULT_AUTO_PET_ID_MAX_PER_RUN
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=15)),
+                vol.Optional(
+                    CONF_AUTO_PET_ID_CLIP_DELAY_SECONDS,
+                    default=opts.get(
+                        CONF_AUTO_PET_ID_CLIP_DELAY_SECONDS,
+                        DEFAULT_AUTO_PET_ID_CLIP_DELAY_SECONDS,
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=30, max=300)),
                 vol.Optional(
                     CONF_ENABLE_DAILY_SUMMARY,
                     default=opts.get(

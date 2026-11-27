@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Set up HA Whisker Pet ID",
-        "description": "Connects to your existing Whisker (litterrobot) integration to expose Litter-Robot 5 Pet ID visits, camera clips, visit reassignment actions, and AI pet health summaries."
+        "description": "Connects to your existing Whisker (litterrobot) integration to expose Litter-Robot 5 Pet ID visits, camera clips, visit reassignment actions, AI health summaries, and Gemini Vision Auto-Pet-ID verification."
       }
     },
     "error": {
@@ -16,11 +16,19 @@
   "options": {
     "step": {
       "init": {
-        "title": "Configure AI Health Summaries & Alerts",
-        "description": "Select your Home Assistant AI Task entity (e.g. Google AI Task), notification target, daily schedule, and visit clustering thresholds.",
+        "title": "Configure AI Health Summaries & Auto Pet ID",
+        "description": "Select your Home Assistant AI Task entity (e.g. Google AI Task), notification target, Gemini Auto-Pet-ID guardrails, daily schedule, and visit clustering thresholds.",
         "data": {
           "ai_task_entity": "AI Task entity (Gemini)",
-          "notify_service": "Notify service target (comma-separated, e.g. notify.mobile_app_brads_iphone_17)",
+          "notify_service": "Notify service target (comma-separated, e.g. notify.family)",
+          "auto_pet_id_mode": "Auto Pet ID verification mode (off, dry_run, auto_reassign)",
+          "enable_hybrid_fast_path": "Enable 0-token hybrid weight fast-path for unambiguous cats",
+          "video_escalation": "Gemini clip inspection mode (thumbnail_only or thumbnail_then_video)",
+          "auto_pet_id_min_confidence": "Minimum confidence required for auto-reassignment",
+          "auto_unassign_scale_glitches": "Automatically unassign <4.0 lb scale anomalies",
+          "auto_pet_id_notify": "Push notification policy for Auto Pet ID (uncertain_only, all_actions, none)",
+          "auto_pet_id_max_per_run": "Max flagged visits evaluated per automatic cycle",
+          "auto_pet_id_clip_delay_seconds": "Seconds to wait for LR5 Pro clip upload before inspecting",
           "enable_daily_summary": "Enable scheduled daily health summary",
           "summary_hour": "Daily summary hour (0-23)",
           "summary_minute": "Daily summary minute (0-59)",
@@ -37,6 +45,9 @@
     "sensor": {
       "flagged_visits": {
         "name": "Flagged visits"
+      },
+      "ai_pet_id_status": {
+        "name": "AI Pet ID status"
       },
       "health_summary": {
         "name": "Health summary"
@@ -158,7 +169,7 @@
         },
         "notify_service": {
           "name": "Notify Service Override",
-          "description": "Optional notify service name(s), comma-separated (e.g. notify.mobile_app_brads_iphone_17)."
+          "description": "Optional notify service name(s), comma-separated (e.g. notify.family)."
         },
         "robot": {
           "name": "Robot",
@@ -167,8 +178,8 @@
       }
     },
     "configure_health": {
-      "name": "Configure AI Health Options",
-      "description": "Persist HA Whisker Pet ID health summary schedule, AI Task entity, notify target, and cluster alert options.",
+      "name": "Configure AI Health & Auto Pet ID Options",
+      "description": "Persist HA Whisker Pet ID health summary schedule, AI Task entity, notify target, cluster thresholds, and Gemini Auto-Pet-ID options.",
       "fields": {
         "ai_task_entity": {
           "name": "AI Task Entity",
@@ -209,6 +220,68 @@
         "alert_cooldown_hours": {
           "name": "Alert Cooldown (Hours)",
           "description": "Minimum hours between repeat cluster notifications per cat."
+        },
+        "auto_pet_id_mode": {
+          "name": "Auto Pet ID Mode",
+          "description": "Automatic verification mode for flagged LR5 visits (off, dry_run, or auto_reassign)."
+        },
+        "enable_hybrid_fast_path": {
+          "name": "Enable Hybrid Fast-Path",
+          "description": "Use 0-token weight reassignment when scale weight unambiguously separates one cat from all others."
+        },
+        "video_escalation": {
+          "name": "Video Escalation Mode",
+          "description": "Thumbnail only, or escalate to MP4 video chunks when Gemini is uncertain."
+        },
+        "auto_pet_id_min_confidence": {
+          "name": "Minimum Auto-Reassign Confidence",
+          "description": "Minimum Gemini confidence required for automatic reassignment (high or medium)."
+        },
+        "auto_unassign_scale_glitches": {
+          "name": "Auto-Unassign Scale Glitches",
+          "description": "Automatically unassign <4.0 lb scale anomalies without calling Gemini."
+        },
+        "auto_pet_id_notify": {
+          "name": "Auto Pet ID Notification Policy",
+          "description": "When to push mobile notifications for Auto Pet ID checks (uncertain_only, all_actions, or none)."
+        },
+        "auto_pet_id_max_per_run": {
+          "name": "Max Flagged Visits Per Run",
+          "description": "Maximum flagged visits processed per automatic cycle."
+        },
+        "auto_pet_id_clip_delay_seconds": {
+          "name": "Clip Upload Delay (Seconds)",
+          "description": "Seconds to wait after a visit before checking clips so LR5 Pro upload completes."
+        }
+      }
+    },
+    "verify_visits_with_ai": {
+      "name": "Verify Flagged Visits with Gemini Vision",
+      "description": "Evaluate recent flagged or specified LR5 visits using Hybrid Fast-Path + Gemini Vision (ai_task.generate_data) with optional dry-run or live reassignment.",
+      "fields": {
+        "event_id": {
+          "name": "Event ID",
+          "description": "Optional specific PET_VISIT eventId to verify (otherwise evaluates recent flagged visits)."
+        },
+        "dry_run": {
+          "name": "Dry Run",
+          "description": "If true, evaluate and log decisions without mutating Whisker; if omitted, uses configured Auto Pet ID Mode."
+        },
+        "limit": {
+          "name": "Max Visits",
+          "description": "Maximum number of flagged visits to evaluate in this run."
+        },
+        "video_escalation": {
+          "name": "Video Escalation Override",
+          "description": "Override thumbnail_only or thumbnail_then_video for this run."
+        },
+        "force": {
+          "name": "Force Re-evaluation",
+          "description": "Re-evaluate even if event_id was already processed or reassigned."
+        },
+        "robot": {
+          "name": "Robot",
+          "description": "Optional Litter-Robot 5 name or serial."
         }
       }
     }

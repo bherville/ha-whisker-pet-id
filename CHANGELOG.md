@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 - 2026-11-27
+
+### Minor Changes
+
+- Add **Hybrid Fast-Path + Gemini Vision Auto-Pet-ID** (`vision_id.py`) using Home Assistant `ai_task.generate_data` (`ai_task.google_ai_task`) with multimodal `media-source://ha_whisker_pet_id/...` attachments (`media_source.py`) requiring zero `configuration.yaml` setup.
+- Cache Whisker pet profile photos into a single labeled reference sheet (`ref_roster_sheet.jpg`) to cut Gemini image token usage ~65%, with Stage 1 clip thumbnail inspection and optional Stage 2 MP4 video chunk escalation (`thumbnail_then_video`).
+- Add contamination-resistant median pet weight baselines (`compute_pet_baseline_lbs`, `compute_clean_baselines`) persisted via HA `Store` alongside `processed_event_ids` and a 25-entry decision audit log.
+- Add 0-token Hybrid Fast-Path reassignment for unambiguous weight-separated outliers (`>= 0.60 lb` margin, `<= 0.75 lb` target delta) and 0-token auto-unassignment for `< 4.0 lb` scale glitches, plus strict safety gates (`min_confidence`, `max_target_weight_delta_lbs = 1.25`, `429` backoff).
+- Add debounced reactive listener (~90s after `litterrobot` updates) + 15m safety-net poll, `ha_whisker_pet_id.verify_visits_with_ai` service action, `sensor.ha_whisker_pet_id_ai_pet_id_status`, and UI/service options.
+
 ## 0.2.1 - 2026-11-27
 
 ### Patch Changes

@@ -5,10 +5,15 @@ from __future__ import annotations
 import base64
 from datetime import datetime, timezone
 import logging
+import os
+from pathlib import Path
+import statistics
+import tempfile
 from typing import Any
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
+import aiohttp
 from aiohttp import ClientError, ClientResponseError
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
@@ -180,6 +185,56 @@ def serialize_pet(pet: Any) -> dict[str, Any]:
     }
 
 
+def compute_pet_baseline_lbs(
+    pet: Any, baseline_overrides: dict[str, float] | None = None
+) -> float | None:
+    """Return a clean baseline weight in lbs, resisting single-visit poisoning."""
+    pet_id = str(getattr(pet, "id", "") or "")
+    pet_name = str(getattr(pet, "name", "") or "")
+    if baseline_overrides:
+        for key in (pet_id, pet_name):
+            if key and isinstance(baseline_overrides.get(key), (int, float)):
+                val = float(baseline_overrides[key])
+                if val > 0:
+                    return round(val, 2)
+        if pet_name:
+            needle = pet_name.casefold()
+            for ov_key, ov_val in baseline_overrides.items():
+                if (
+                    isinstance(ov_key, str)
+                    and ov_key.casefold() == needle
+                    and isinstance(ov_val, (int, float))
+                    and float(ov_val) > 0
+                ):
+                    return round(float(ov_val), 2)
+
+    valid_history: list[float] = []
+    for item in getattr(pet, "weight_history", None) or []:
+        raw_w = (
+            item.get("weight_lbs")
+            if isinstance(item, dict)
+            else getattr(item, "weight", None)
+        )
+        if (
+            isinstance(raw_w, (int, float))
+            and not isinstance(raw_w, bool)
+            and DEFAULT_MIN_VALID_WEIGHT_LBS <= float(raw_w) < DEFAULT_MAX_VALID_WEIGHT_LBS
+        ):
+            valid_history.append(float(raw_w))
+
+    if len(valid_history) >= 3:
+        return round(float(statistics.median(valid_history)), 2)
+
+    est = getattr(pet, "estimated_weight", None)
+    if isinstance(est, (int, float)) and not isinstance(est, bool) and float(est) > 0:
+        return round(float(est), 2)
+
+    if valid_history:
+        return round(float(statistics.median(valid_history)), 2)
+
+    return None
+
+
 def analyze_visit(
     activity: dict[str, Any],
     pets_by_id: dict[str, Any],
@@ -191,6 +246,7 @@ def analyze_visit(
     mismatch_threshold_lbs: float = DEFAULT_WEIGHT_MISMATCH_LBS,
     max_valid_weight_lbs: float = DEFAULT_MAX_VALID_WEIGHT_LBS,
     min_valid_weight_lbs: float = DEFAULT_MIN_VALID_WEIGHT_LBS,
+    baseline_overrides: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """Normalize a single LR5 activity record, match clips, and flag Pet ID issues."""
     event_id = str(
@@ -222,7 +278,7 @@ def analyze_visit(
     if weight_lbs is not None:
         candidates = []
         for pet in all_pets:
-            est = getattr(pet, "estimated_weight", None)
+            est = compute_pet_baseline_lbs(pet, baseline_overrides)
             if isinstance(est, (int, float)) and est > 0:
                 delta = round(weight_lbs - float(est), 2)
                 candidates.append(
@@ -246,10 +302,11 @@ def analyze_visit(
         flags.append("scale_anomaly")
     if weight_lbs is not None and assigned_pet_ids:
         assigned_baselines = [
-            float(pets_by_id[pid].estimated_weight)
+            baseline
             for pid in assigned_pet_ids
             if pid in pets_by_id
-            and isinstance(getattr(pets_by_id[pid], "estimated_weight", None), (int, float))
+            and (baseline := compute_pet_baseline_lbs(pets_by_id[pid], baseline_overrides))
+            is not None
         ]
         if assigned_baselines and min(
             abs(weight_lbs - baseline) for baseline in assigned_baselines
@@ -416,6 +473,7 @@ async def async_list_visits(
     date_str: str | None = None,
     include_clips: bool = True,
     max_clip_delta_seconds: int = DEFAULT_MAX_CLIP_DELTA_SECONDS,
+    baseline_overrides: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """Fetch LR5 activities, join matching camera clips, and flag Pet ID issues."""
     _, _, account = get_litterrobot_runtime(hass)
@@ -455,6 +513,7 @@ async def async_list_visits(
             clips,
             tz_name,
             max_clip_delta_seconds=max_clip_delta_seconds,
+            baseline_overrides=baseline_overrides,
         )
         for act in activities
         if isinstance(act, dict)
@@ -596,3 +655,70 @@ async def async_reassign_visit(
         "to_pet_id": to_pet_id,
         "response": resp_data,
     }
+
+
+def _write_bytes_atomic(dest_path: Path, data: bytes) -> Path:
+    """Write bytes to dest_path atomically via a same-directory temp file."""
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(dest_path.parent), prefix=f".{dest_path.stem}_", suffix=dest_path.suffix
+    )
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        os.replace(tmp_name, dest_path)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+    return dest_path
+
+
+async def async_download_media_file(
+    hass: HomeAssistant,
+    websession: Any,
+    url: str,
+    dest_path: Path,
+    *,
+    max_bytes: int = 8 * 1024 * 1024,
+    timeout_seconds: int = 25,
+) -> Path:
+    """Download a presigned image or MP4 clip URL to dest_path within max_bytes."""
+    kwargs: dict[str, Any] = {}
+    client_timeout = getattr(aiohttp, "ClientTimeout", None)
+    if callable(client_timeout):
+        kwargs["timeout"] = client_timeout(total=timeout_seconds)
+
+    chunks: list[bytes] = []
+    total = 0
+    try:
+        async with websession.get(url, **kwargs) as resp:
+            resp.raise_for_status()
+            if hasattr(resp, "content") and hasattr(resp.content, "iter_chunked"):
+                async for piece in resp.content.iter_chunked(65536):
+                    total += len(piece)
+                    if total > max_bytes:
+                        raise HomeAssistantError(
+                            f"Media attachment exceeds {max_bytes} byte safety limit."
+                        )
+                    chunks.append(piece)
+            else:
+                raw = await resp.read()
+                if len(raw) > max_bytes:
+                    raise HomeAssistantError(
+                        f"Media attachment exceeds {max_bytes} byte safety limit."
+                    )
+                chunks.append(raw)
+    except HomeAssistantError:
+        raise
+    except (ClientResponseError, ClientError) as err:
+        raise HomeAssistantError(f"Failed downloading media attachment: {err}") from err
+    except Exception as err:
+        raise HomeAssistantError(f"Unexpected media download error: {err}") from err
+
+    payload = b"".join(chunks)
+    if not payload:
+        raise HomeAssistantError("Downloaded media attachment was empty.")
+    return await hass.async_add_executor_job(_write_bytes_atomic, dest_path, payload)

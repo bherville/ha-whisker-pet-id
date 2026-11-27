@@ -39,6 +39,7 @@ async def async_setup_entry(
 
     entities: list[SensorEntity] = [
         WhiskerFlaggedVisitsSensor(diag_coordinator, entry),
+        WhiskerAiPetIdSensor(diag_coordinator, entry),
         WhiskerHealthSummarySensor(health_coordinator, entry),
     ]
 
@@ -105,6 +106,37 @@ class WhiskerFlaggedVisitsSensor(
             "scale_anomaly_count": self.coordinator.data.get("scale_anomaly_count", 0),
             "flagged_visits": self.coordinator.data.get("flagged_visits", []),
         }
+
+
+class WhiskerAiPetIdSensor(
+    CoordinatorEntity[WhiskerPetIdCoordinator], SensorEntity
+):
+    """Status and decision audit sensor for Hybrid + Gemini Vision Auto-Pet-ID."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "ai_pet_id_status"
+    _attr_icon = "mdi:auto-fix"
+
+    def __init__(
+        self, coordinator: WhiskerPetIdCoordinator, entry: ConfigEntry
+    ) -> None:
+        """Initialize the AI Pet ID status sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_ai_pet_id_status"
+        self._attr_device_info = _service_device_info(entry)
+
+    @property
+    def native_value(self) -> str:
+        """Return active Auto-Pet-ID mode (off, dry_run, auto_reassign, or backoff)."""
+        payload = self.coordinator.get_ai_status_payload()
+        return str(payload.get("state") or "off")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return clean baselines, counters, and last 25 AI Pet ID decisions."""
+        payload = dict(self.coordinator.get_ai_status_payload())
+        payload.pop("state", None)
+        return payload
 
 
 class WhiskerHealthSummarySensor(

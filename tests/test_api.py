@@ -206,6 +206,47 @@ class TestApiHelpers(unittest.TestCase):
         self.assertEqual([c["clip_id"] for c in res["matched_clips"]], ["2001", "2002", "2003"])
         self.assertEqual(res["matched_clips"][0]["signed_time_delta_seconds"], -88.0)
 
+    def test_median_baseline_and_override_resist_poisoned_estimated_weight(self) -> None:
+        jane_poisoned = _make_pet("PET-JANE", "Jane", 11.29)
+        jane_poisoned.weight_history = [
+            SimpleNamespace(weight=8.42),
+            SimpleNamespace(weight=8.54),
+            SimpleNamespace(weight=8.31),
+            SimpleNamespace(weight=8.58),
+            SimpleNamespace(weight=11.29),
+        ]
+        lexi = _make_pet("PET-LEXI", "Lexi", 11.49)
+        lexi.weight_history = [
+            SimpleNamespace(weight=11.50),
+            SimpleNamespace(weight=11.61),
+            SimpleNamespace(weight=11.49),
+        ]
+        # Median ignores the single 11.29 poisoned tail reading
+        self.assertEqual(api.compute_pet_baseline_lbs(jane_poisoned), 8.54)
+        self.assertEqual(
+            api.compute_pet_baseline_lbs(jane_poisoned, {"Jane": 8.58}), 8.58
+        )
+
+        act = {
+            "eventId": "evt-poison-check",
+            "type": "PET_VISIT",
+            "timestamp": "2026-11-27T13:14:47Z",
+            "petWeight": 1129.0,
+            "duration": 36,
+            "petIds": ["PET-JANE"],
+            "cameraEventIds": [],
+        }
+        res = api.analyze_visit(
+            act,
+            {"PET-JANE": jane_poisoned, "PET-LEXI": lexi},
+            [jane_poisoned, lexi],
+            [],
+            "America/Chicago",
+            baseline_overrides={"Jane": 8.58, "Lexi": 11.60},
+        )
+        self.assertIn("weight_mismatch", res["flags"])
+        self.assertEqual(res["closest_pets_by_weight"][0]["name"], "Lexi")
+
 
 class TestAsyncApi(unittest.IsolatedAsyncioTestCase):
     """Tests for async Whisker API calls."""

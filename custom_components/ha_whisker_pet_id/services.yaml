@@ -269,3 +269,126 @@ configure_health:
           min: 1
           max: 48
           mode: box
+    auto_pet_id_mode:
+      name: Auto Pet ID Mode
+      description: Automatic verification mode for flagged LR5 visits (off, dry_run, or auto_reassign).
+      required: false
+      example: "auto_reassign"
+      selector:
+        select:
+          options:
+            - "off"
+            - "dry_run"
+            - "auto_reassign"
+    enable_hybrid_fast_path:
+      name: Enable Hybrid Fast-Path
+      description: Use 0-token weight reassignment when scale weight unambiguously separates one cat from all others.
+      required: false
+      selector:
+        boolean:
+    video_escalation:
+      name: Video Escalation Mode
+      description: Thumbnail only, or escalate to MP4 video chunks when Gemini is uncertain.
+      required: false
+      example: "thumbnail_then_video"
+      selector:
+        select:
+          options:
+            - "thumbnail_only"
+            - "thumbnail_then_video"
+    auto_pet_id_min_confidence:
+      name: Minimum Auto-Reassign Confidence
+      description: Minimum Gemini confidence required for automatic reassignment (high or medium).
+      required: false
+      example: "high"
+      selector:
+        select:
+          options:
+            - "high"
+            - "medium"
+    auto_unassign_scale_glitches:
+      name: Auto-Unassign Scale Glitches
+      description: Automatically unassign <4.0 lb scale anomalies without calling Gemini.
+      required: false
+      selector:
+        boolean:
+    auto_pet_id_notify:
+      name: Auto Pet ID Notification Policy
+      description: When to push mobile notifications for Auto Pet ID checks (uncertain_only, all_actions, or none).
+      required: false
+      example: "uncertain_only"
+      selector:
+        select:
+          options:
+            - "uncertain_only"
+            - "all_actions"
+            - "none"
+    auto_pet_id_max_per_run:
+      name: Max Flagged Visits Per Run
+      description: Maximum flagged visits processed per automatic cycle.
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 15
+          mode: box
+    auto_pet_id_clip_delay_seconds:
+      name: Clip Upload Delay (Seconds)
+      description: Seconds to wait after a visit before checking clips so LR5 Pro upload completes.
+      required: false
+      selector:
+        number:
+          min: 30
+          max: 300
+          mode: box
+
+verify_visits_with_ai:
+  name: Verify Flagged Visits with Gemini Vision
+  description: Evaluate recent flagged or specified LR5 visits using Hybrid Fast-Path + Gemini Vision (ai_task.generate_data) with optional dry-run or live reassignment.
+  fields:
+    event_id:
+      name: Event ID
+      description: Optional specific PET_VISIT eventId to verify (otherwise evaluates recent flagged visits).
+      required: false
+      example: "evt-12345"
+      selector:
+        text:
+    dry_run:
+      name: Dry Run
+      description: If true, evaluate and log decisions without mutating Whisker; if omitted, uses configured Auto Pet ID Mode.
+      required: false
+      selector:
+        boolean:
+    limit:
+      name: Max Visits
+      description: Maximum number of flagged visits to evaluate in this run.
+      required: false
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 25
+          mode: box
+    video_escalation:
+      name: Video Escalation Override
+      description: Override thumbnail_only or thumbnail_then_video for this run.
+      required: false
+      selector:
+        select:
+          options:
+            - "thumbnail_only"
+            - "thumbnail_then_video"
+    force:
+      name: Force Re-evaluation
+      description: Re-evaluate even if event_id was already processed or reassigned.
+      required: false
+      default: false
+      selector:
+        boolean:
+    robot:
+      name: Robot
+      description: Optional Litter-Robot 5 name or serial.
+      required: false
+      example: "Flex Room"
+      selector:
+        text:

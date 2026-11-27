@@ -25,6 +25,15 @@ CONF_CLUSTER_WINDOW_MINUTES = "cluster_window_minutes"
 CONF_CLUSTER_MIN_VISITS = "cluster_min_visits"
 CONF_ALERT_COOLDOWN_HOURS = "alert_cooldown_hours"
 
+CONF_AUTO_PET_ID_MODE = "auto_pet_id_mode"
+CONF_ENABLE_HYBRID_FAST_PATH = "enable_hybrid_fast_path"
+CONF_VIDEO_ESCALATION = "video_escalation"
+CONF_AUTO_PET_ID_MIN_CONFIDENCE = "auto_pet_id_min_confidence"
+CONF_AUTO_UNASSIGN_SCALE_GLITCHES = "auto_unassign_scale_glitches"
+CONF_AUTO_PET_ID_NOTIFY = "auto_pet_id_notify"
+CONF_AUTO_PET_ID_MAX_PER_RUN = "auto_pet_id_max_per_run"
+CONF_AUTO_PET_ID_CLIP_DELAY_SECONDS = "auto_pet_id_clip_delay_seconds"
+
 DEFAULT_AI_TASK_ENTITY = "ai_task.google_ai_task"
 DEFAULT_NOTIFY_SERVICE = ""
 DEFAULT_ENABLE_DAILY_SUMMARY = True
@@ -38,9 +47,35 @@ DEFAULT_ALERT_COOLDOWN_HOURS = 6
 DEFAULT_SHORT_VISIT_SECONDS = 15
 DEFAULT_LONG_VISIT_SECONDS = 180
 
+DEFAULT_AUTO_PET_ID_MODE = "off"
+DEFAULT_ENABLE_HYBRID_FAST_PATH = True
+DEFAULT_VIDEO_ESCALATION = "thumbnail_then_video"
+DEFAULT_AUTO_PET_ID_MIN_CONFIDENCE = "high"
+DEFAULT_AUTO_UNASSIGN_SCALE_GLITCHES = True
+DEFAULT_AUTO_PET_ID_NOTIFY = "uncertain_only"
+DEFAULT_AUTO_PET_ID_MAX_PER_RUN = 5
+DEFAULT_AUTO_PET_ID_CLIP_DELAY_SECONDS = 90
+
+AUTO_PET_ID_MODES = ("off", "dry_run", "auto_reassign")
+VIDEO_ESCALATION_MODES = ("thumbnail_only", "thumbnail_then_video")
+AUTO_PET_ID_CONFIDENCE_LEVELS = ("high", "medium")
+AUTO_PET_ID_NOTIFY_MODES = ("uncertain_only", "all_actions", "none")
+
+AUTO_PET_ID_BACKOFF_MINUTES = 60
+DEFAULT_MAX_TARGET_WEIGHT_DELTA_LBS = 1.25
+FAST_PATH_MAX_BEST_DELTA_LBS = 0.75
+FAST_PATH_MIN_SECOND_DELTA_LBS = 1.05
+FAST_PATH_MIN_MARGIN_LBS = 0.60
+FAST_PATH_MIN_ASSIGNED_DELTA_LBS = 1.50
+
+MEDIA_STORAGE_DIRNAME = "ha_whisker_pet_id_media"
+AUTO_ID_STORE_KEY = f"{DOMAIN}.auto_id_state"
+AUTO_ID_STORE_VERSION = 1
+
 SERVICE_GET_PETS = "get_pets"
 SERVICE_LIST_VISITS = "list_visits"
 SERVICE_GET_CLIP_URLS = "get_clip_urls"
 SERVICE_REASSIGN_VISIT = "reassign_visit"
 SERVICE_GENERATE_HEALTH_SUMMARY = "generate_health_summary"
 SERVICE_CONFIGURE_HEALTH = "configure_health"
+SERVICE_VERIFY_VISITS_WITH_AI = "verify_visits_with_ai"
