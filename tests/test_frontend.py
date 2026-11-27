@@ -54,6 +54,11 @@ class TestFrontendCards(unittest.TestCase):
 
         self.assertIn("whisker-health-archive-card", content)
         self.assertIn("whisker-auto-pet-id-card", content)
+        self.assertIn("Smart Cat ID", content)
+        self.assertIn("Auto-Fix On", content)
+        self.assertIn("page_size", content)
+        self.assertIn("getGridOptions", content)
+        self.assertIn("@container", content)
         self.assertIn("window.customCards", content)
         self.assertIn("getStubConfig", content)
         self.assertIn("escapeHtml", content)

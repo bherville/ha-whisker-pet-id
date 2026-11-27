@@ -1,6 +1,6 @@
 /* Built-in Lovelace cards for HA Whisker Pet ID */
 
-const CARD_VERSION = "0.4.0";
+const CARD_VERSION = "0.4.1";
 
 const DEFAULT_HEALTH_ENTITY = "sensor.ha_whisker_pet_id_health_summary";
 const DEFAULT_HISTORY_ENTITY = "sensor.ha_whisker_pet_id_alert_history";
@@ -14,6 +14,13 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function titleCaseWords(raw) {
+  return String(raw || "")
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
 
 function slugifyPet(name) {
@@ -63,6 +70,28 @@ function isEntityReady(stateObj) {
   );
 }
 
+function renderPagerHtml(totalItems, page, pageSize) {
+  if (totalItems <= pageSize) return "";
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const safePage = Math.min(Math.max(0, page), totalPages - 1);
+  const start = safePage * pageSize;
+  const end = Math.min(start + pageSize, totalItems);
+  return `
+    <div class="pager">
+      <span class="pager-info">Showing ${start + 1}–${end} of ${totalItems}</span>
+      <div class="pager-controls">
+        <button class="pager-btn" data-page="prev" type="button" ${safePage <= 0 ? "disabled" : ""}>
+          Prev
+        </button>
+        <span class="pager-page">Page ${safePage + 1} / ${totalPages}</span>
+        <button class="pager-btn" data-page="next" type="button" ${safePage >= totalPages - 1 ? "disabled" : ""}>
+          Next
+        </button>
+      </div>
+    </div>
+  `;
+}
+
 const SHARED_STYLES = `
   :host {
     display: block;
@@ -74,6 +103,7 @@ const SHARED_STYLES = `
     border-radius: var(--ha-card-border-radius, 12px);
     background: var(--ha-card-background, var(--card-background-color, #fff));
     box-sizing: border-box;
+    container-type: inline-size;
   }
   .header {
     display: flex;
@@ -252,19 +282,25 @@ const SHARED_STYLES = `
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--secondary-text-color);
-    padding: 8px 10px;
+    padding: 8px 8px;
     background: var(--secondary-background-color, rgba(127, 127, 127, 0.08));
     border-bottom: 1px solid var(--divider-color, rgba(127, 127, 127, 0.2));
     white-space: nowrap;
   }
   td {
-    padding: 8px 10px;
+    padding: 8px 8px;
     border-bottom: 1px solid var(--divider-color, rgba(127, 127, 127, 0.14));
     vertical-align: top;
     line-height: 1.35;
   }
   tr:last-child td {
     border-bottom: none;
+  }
+  .inline-weight {
+    display: none;
+    font-size: 0.75rem;
+    color: var(--secondary-text-color);
+    font-variant-numeric: tabular-nums;
   }
   .status-pill {
     display: inline-block;
@@ -300,6 +336,47 @@ const SHARED_STYLES = `
     background: rgba(128, 128, 128, 0.15);
     color: var(--secondary-text-color);
   }
+  .pager {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 10px;
+    font-size: 0.78rem;
+    color: var(--secondary-text-color);
+    flex-wrap: wrap;
+  }
+  .pager-info {
+    font-variant-numeric: tabular-nums;
+  }
+  .pager-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .pager-page {
+    font-variant-numeric: tabular-nums;
+  }
+  .pager-btn {
+    padding: 4px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.28));
+    background: var(--secondary-background-color, rgba(127, 127, 127, 0.08));
+    color: var(--primary-text-color);
+    font-size: 0.76rem;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .pager-btn:hover:not(:disabled) {
+    background: rgba(3, 169, 244, 0.14);
+    border-color: var(--primary-color, #03a9f4);
+  }
+  .pager-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
   .empty {
     padding: 18px 12px;
     text-align: center;
@@ -309,6 +386,20 @@ const SHARED_STYLES = `
   .mono {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+  }
+  @container (max-width: 470px) {
+    .col-weight {
+      display: none;
+    }
+    .inline-weight {
+      display: block;
+      margin-top: 2px;
+    }
+    th,
+    td {
+      padding: 6px 6px;
+      font-size: 0.78rem;
+    }
   }
 `;
 
@@ -320,9 +411,11 @@ class WhiskerHealthArchiveCard extends HTMLElement {
       title: "Pet Health & Alert Archive",
       health_entity: DEFAULT_HEALTH_ENTITY,
       alert_history_entity: DEFAULT_HISTORY_ENTITY,
-      max_rows: 15,
+      page_size: 8,
+      max_rows: 25,
     };
     this._filter = "all";
+    this._page = 0;
     this._lastSig = "";
   }
 
@@ -331,7 +424,15 @@ class WhiskerHealthArchiveCard extends HTMLElement {
       title: "Pet Health & Alert Archive",
       health_entity: DEFAULT_HEALTH_ENTITY,
       alert_history_entity: DEFAULT_HISTORY_ENTITY,
-      max_rows: 15,
+      page_size: 8,
+      max_rows: 25,
+    };
+  }
+
+  getGridOptions() {
+    return {
+      columns: "full",
+      min_columns: 12,
     };
   }
 
@@ -339,12 +440,16 @@ class WhiskerHealthArchiveCard extends HTMLElement {
     if (!config || typeof config !== "object") {
       throw new Error("Invalid card configuration");
     }
+    const maxRows = Math.max(1, Number(config.max_rows || 25));
+    const pageSize = Math.max(1, Number(config.page_size || 8));
     this._config = {
       title: config.title || "Pet Health & Alert Archive",
       health_entity: config.health_entity || DEFAULT_HEALTH_ENTITY,
       alert_history_entity: config.alert_history_entity || DEFAULT_HISTORY_ENTITY,
-      max_rows: Math.max(1, Number(config.max_rows || 15)),
+      page_size: pageSize,
+      max_rows: maxRows,
     };
+    this._page = 0;
     this._lastSig = "";
     this._render();
   }
@@ -435,9 +540,10 @@ class WhiskerHealthArchiveCard extends HTMLElement {
       !petNames.includes(this._filter)
     ) {
       this._filter = "all";
+      this._page = 0;
     }
 
-    const filtered = recentAlerts
+    const allFiltered = recentAlerts
       .filter((item) => {
         if (this._filter === "all") return true;
         if (this._filter === "active") {
@@ -447,6 +553,12 @@ class WhiskerHealthArchiveCard extends HTMLElement {
         return pets.includes(this._filter);
       })
       .slice(0, this._config.max_rows);
+
+    const pageSize = this._config.page_size;
+    const totalPages = Math.max(1, Math.ceil(allFiltered.length / pageSize));
+    this._page = Math.min(Math.max(0, this._page), totalPages - 1);
+    const start = this._page * pageSize;
+    const pageRows = allFiltered.slice(start, start + pageSize);
 
     const petChipsHtml = petNames
       .map((pet) => {
@@ -461,15 +573,15 @@ class WhiskerHealthArchiveCard extends HTMLElement {
       })
       .join("");
 
-    const rowsHtml = filtered.length
-      ? filtered
+    const rowsHtml = pageRows.length
+      ? pageRows
           .map((item) => {
             const status = String(item?.status || "active").toLowerCase();
             const sev = String(item?.severity || status).toLowerCase();
             const pillClass = status === "resolved" ? "resolved" : sev === "watch" ? "watch" : "active";
             const pets = Array.isArray(item?.pets) && item.pets.length ? item.pets.join(", ") : "Household";
             const opened = formatTimestamp(item?.opened_at || item?.last_seen_at);
-            const source = String(item?.source || "alert").replace(/_/g, " ");
+            const source = titleCaseWords(item?.source || "alert");
             return `
               <tr>
                 <td><span class="status-pill ${escapeHtml(pillClass)}">${escapeHtml(status)}</span></td>
@@ -482,6 +594,8 @@ class WhiskerHealthArchiveCard extends HTMLElement {
           })
           .join("")
       : `<tr><td colspan="5" class="empty">No alerts matching this filter.</td></tr>`;
+
+    const pagerHtml = renderPagerHtml(allFiltered.length, this._page, pageSize);
 
     this.shadowRoot.innerHTML = `
       <style>${SHARED_STYLES}</style>
@@ -531,13 +645,28 @@ class WhiskerHealthArchiveCard extends HTMLElement {
             </tbody>
           </table>
         </div>
+        ${pagerHtml}
       </ha-card>
     `;
 
     this.shadowRoot.querySelectorAll("button.chip").forEach((btn) => {
       btn.addEventListener("click", () => {
         this._filter = btn.getAttribute("data-filter") || "all";
+        this._page = 0;
         this._render();
+      });
+    });
+
+    this.shadowRoot.querySelectorAll("button.pager-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const dir = btn.getAttribute("data-page");
+        if (dir === "prev" && this._page > 0) {
+          this._page -= 1;
+          this._render();
+        } else if (dir === "next" && this._page < totalPages - 1) {
+          this._page += 1;
+          this._render();
+        }
       });
     });
   }
@@ -548,18 +677,28 @@ class WhiskerAutoPetIdCard extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this._config = {
-      title: "Hybrid + Gemini Auto-Pet-ID",
+      title: "Smart Cat ID",
       entity: DEFAULT_AI_ENTITY,
-      max_rows: 12,
+      page_size: 5,
+      max_rows: 25,
     };
+    this._page = 0;
     this._lastSig = "";
   }
 
   static getStubConfig() {
     return {
-      title: "Hybrid + Gemini Auto-Pet-ID",
+      title: "Smart Cat ID",
       entity: DEFAULT_AI_ENTITY,
-      max_rows: 12,
+      page_size: 5,
+      max_rows: 25,
+    };
+  }
+
+  getGridOptions() {
+    return {
+      columns: "full",
+      min_columns: 12,
     };
   }
 
@@ -567,11 +706,15 @@ class WhiskerAutoPetIdCard extends HTMLElement {
     if (!config || typeof config !== "object") {
       throw new Error("Invalid card configuration");
     }
+    const maxRows = Math.max(1, Number(config.max_rows || 25));
+    const pageSize = Math.max(1, Number(config.page_size || 5));
     this._config = {
-      title: config.title || "Hybrid + Gemini Auto-Pet-ID",
+      title: config.title || "Smart Cat ID",
       entity: config.entity || DEFAULT_AI_ENTITY,
-      max_rows: Math.max(1, Number(config.max_rows || 12)),
+      page_size: pageSize,
+      max_rows: maxRows,
     };
+    this._page = 0;
     this._lastSig = "";
     this._render();
   }
@@ -596,6 +739,36 @@ class WhiskerAutoPetIdCard extends HTMLElement {
     if (val === "dry_run") return "info";
     if (val === "backoff") return "warn";
     return "muted";
+  }
+
+  _formatMode(mode) {
+    const val = String(mode || "off").toLowerCase();
+    if (val === "auto_reassign") return "Auto-Fix On";
+    if (val === "dry_run") return "Preview Mode";
+    if (val === "backoff") return "Paused (Limit)";
+    if (val === "off") return "Paused";
+    return titleCaseWords(mode);
+  }
+
+  _formatStage(stage) {
+    const val = String(stage || "").toLowerCase();
+    if (val === "hybrid_fast_path") return "Weight Match";
+    if (val === "gemini_thumbnail") return "AI Photo";
+    if (val === "gemini_video") return "AI Video";
+    if (val === "scale_glitch") return "Scale Glitch";
+    if (val === "gemini_error") return "AI Retry";
+    return stage ? titleCaseWords(stage) : "—";
+  }
+
+  _formatAction(action) {
+    const val = String(action || "").toLowerCase();
+    if (val === "reassigned") return "Reassigned";
+    if (val === "confirmed") return "Confirmed";
+    if (val === "unassigned_scale_glitch" || val === "unassigned") return "Cleared";
+    if (val === "suggested") return "Suggested";
+    if (val === "uncertain") return "Needs Review";
+    if (val === "kept") return "Kept";
+    return action ? titleCaseWords(action) : "—";
   }
 
   _actionClass(action) {
@@ -630,6 +803,7 @@ class WhiskerAutoPetIdCard extends HTMLElement {
     const modeState = String(entity.state || "off");
     const attrs = entity.attributes || {};
     const badgeCls = this._modeBadgeClass(modeState);
+    const badgeLabel = this._formatMode(modeState);
     const baselines =
       attrs.clean_baselines && typeof attrs.clean_baselines === "object"
         ? Object.entries(attrs.clean_baselines).sort(([a], [b]) => a.localeCompare(b))
@@ -637,6 +811,12 @@ class WhiskerAutoPetIdCard extends HTMLElement {
     const decisions = Array.isArray(attrs.recent_decisions)
       ? attrs.recent_decisions.slice(0, this._config.max_rows)
       : [];
+
+    const pageSize = this._config.page_size;
+    const totalPages = Math.max(1, Math.ceil(decisions.length / pageSize));
+    this._page = Math.min(Math.max(0, this._page), totalPages - 1);
+    const start = this._page * pageSize;
+    const pageRows = decisions.slice(start, start + pageSize);
 
     const baselinesHtml = baselines.length
       ? baselines
@@ -652,10 +832,10 @@ class WhiskerAutoPetIdCard extends HTMLElement {
             `;
           })
           .join("")
-      : `<span class="metric-pill">Clean baselines learning…</span>`;
+      : `<span class="metric-pill">Learning clean weights…</span>`;
 
-    const rowsHtml = decisions.length
-      ? decisions
+    const rowsHtml = pageRows.length
+      ? pageRows
           .map((d) => {
             const time = formatTimestamp(d?.local_time || d?.timestamp);
             const wt = Number.isFinite(Number(d?.weight_lbs))
@@ -663,27 +843,32 @@ class WhiskerAutoPetIdCard extends HTMLElement {
               : "—";
             const fromPet = d?.from_pet || "Unassigned";
             const toPet = d?.to_pet || "—";
-            const route = fromPet === toPet ? `${toPet}` : `${fromPet} -> ${toPet}`;
-            const stage = String(d?.stage || "—").replace(/_/g, " ");
-            const action = String(d?.action || "—").replace(/_/g, " ");
-            const conf = d?.confidence ? String(d.confidence) : "—";
+            const route = fromPet === toPet ? `${toPet}` : `${fromPet} → ${toPet}`;
+            const method = this._formatStage(d?.stage);
+            const resultLabel = this._formatAction(d?.action);
+            const conf = d?.confidence ? ` (${titleCaseWords(d.confidence)})` : "";
             const actionCls = this._actionClass(d?.action);
             return `
               <tr>
                 <td class="mono">${escapeHtml(time)}</td>
-                <td class="mono">${escapeHtml(wt)}</td>
-                <td><strong>${escapeHtml(route)}</strong></td>
-                <td>${escapeHtml(stage)} (${escapeHtml(conf)})</td>
-                <td><span class="status-pill ${escapeHtml(actionCls)}">${escapeHtml(action)}</span></td>
+                <td class="col-weight mono">${escapeHtml(wt)}</td>
+                <td>
+                  <strong>${escapeHtml(route)}</strong>
+                  <div class="inline-weight">${escapeHtml(wt)}</div>
+                </td>
+                <td>${escapeHtml(method)}${escapeHtml(conf)}</td>
+                <td><span class="status-pill ${escapeHtml(actionCls)}">${escapeHtml(resultLabel)}</span></td>
               </tr>
             `;
           })
           .join("")
-      : `<tr><td colspan="5" class="empty">No Auto-Pet-ID decisions recorded yet.</td></tr>`;
+      : `<tr><td colspan="5" class="empty">No recent Smart Cat ID activity recorded yet.</td></tr>`;
 
     const errorBanner = attrs.last_error
       ? `<div class="callout warn">Last notice: ${escapeHtml(attrs.last_error)}</div>`
       : "";
+
+    const pagerHtml = renderPagerHtml(decisions.length, this._page, pageSize);
 
     this.shadowRoot.innerHTML = `
       <style>${SHARED_STYLES}</style>
@@ -691,19 +876,19 @@ class WhiskerAutoPetIdCard extends HTMLElement {
         <div class="header">
           <div>
             <h2 class="title">${escapeHtml(this._config.title)}</h2>
-            <div class="subtitle">Last cycle: ${escapeHtml(formatTimestamp(attrs.last_run_at))}</div>
+            <div class="subtitle">Last check: ${escapeHtml(formatTimestamp(attrs.last_run_at))}</div>
           </div>
-          <span class="badge ${escapeHtml(badgeCls)}">${escapeHtml(modeState)}</span>
+          <span class="badge ${escapeHtml(badgeCls)}">${escapeHtml(badgeLabel)}</span>
         </div>
 
         ${errorBanner}
 
         <div class="metrics">
           <span class="metric-pill"><strong>${Number(attrs.auto_reassigned_count || 0)}</strong> Reassigned</span>
-          <span class="metric-pill"><strong>${Number(attrs.fast_path_count || 0)}</strong> Fast-Path</span>
-          <span class="metric-pill"><strong>${Number(attrs.gemini_calls_count || 0)}</strong> Gemini Calls</span>
-          <span class="metric-pill"><strong>${Number(attrs.scale_unassigned_count || 0)}</strong> Glitches</span>
-          <span class="metric-pill"><strong>${Number(attrs.uncertain_count || 0)}</strong> Uncertain</span>
+          <span class="metric-pill"><strong>${Number(attrs.fast_path_count || 0)}</strong> Weight Match</span>
+          <span class="metric-pill"><strong>${Number(attrs.gemini_calls_count || 0)}</strong> AI Vision</span>
+          <span class="metric-pill"><strong>${Number(attrs.scale_unassigned_count || 0)}</strong> Scale Glitches</span>
+          <span class="metric-pill"><strong>${Number(attrs.uncertain_count || 0)}</strong> Needs Review</span>
         </div>
 
         <div class="baselines">
@@ -715,10 +900,10 @@ class WhiskerAutoPetIdCard extends HTMLElement {
             <thead>
               <tr>
                 <th>Time</th>
-                <th>Weight</th>
-                <th>Assignment</th>
-                <th>Stage</th>
-                <th>Action</th>
+                <th class="col-weight">Weight</th>
+                <th>Cat</th>
+                <th>Method</th>
+                <th>Result</th>
               </tr>
             </thead>
             <tbody>
@@ -726,8 +911,22 @@ class WhiskerAutoPetIdCard extends HTMLElement {
             </tbody>
           </table>
         </div>
+        ${pagerHtml}
       </ha-card>
     `;
+
+    this.shadowRoot.querySelectorAll("button.pager-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const dir = btn.getAttribute("data-page");
+        if (dir === "prev" && this._page > 0) {
+          this._page -= 1;
+          this._render();
+        } else if (dir === "next" && this._page < totalPages - 1) {
+          this._page += 1;
+          this._render();
+        }
+      });
+    });
   }
 }
 
@@ -753,9 +952,9 @@ if (!window.customCards.some((card) => card.type === "whisker-health-archive-car
 if (!window.customCards.some((card) => card.type === "whisker-auto-pet-id-card")) {
   window.customCards.push({
     type: "whisker-auto-pet-id-card",
-    name: "Whisker Auto-Pet-ID Audit",
+    name: "Whisker Smart Cat ID",
     description:
-      "Displays Auto-Pet-ID mode, clean cat weight baselines with avatars, and recent AI/fast-path decisions.",
+      "Displays Smart Cat ID status, clean weight baselines with cat avatars, and paginated visit corrections.",
     preview: true,
     documentationURL:
       "https://gitlab.com/bherville/home-assistant/ha-whisker-pet-id",
