@@ -61,6 +61,7 @@ from .const import (
     VIDEO_ESCALATION_MODES,
 )
 from .coordinator import WhiskerHealthCoordinator, WhiskerPetIdCoordinator
+from .frontend import async_register_frontend_cards
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -200,8 +201,9 @@ def _iter_alert_histories(hass: HomeAssistant) -> list[AlertHistoryManager]:
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Register HA Whisker Pet ID service actions."""
+    """Register HA Whisker Pet ID service actions and built-in frontend cards."""
     hass.data.setdefault(DOMAIN, {})
+    await async_register_frontend_cards(hass)
 
     async def handle_get_pets(call: ServiceCall) -> ServiceResponse:
         return await async_get_pets_summary(

@@ -1,0 +1,22 @@
+# Copy into a Lovelace Manual card (vertical-stack) for household health,
+# interactive alert filtering, and a 7-day native Home Assistant alert trend.
+type: vertical-stack
+cards:
+  - type: custom:whisker-health-archive-card
+    title: Pet Health & Alert Archive
+    health_entity: sensor.ha_whisker_pet_id_health_summary
+    alert_history_entity: sensor.ha_whisker_pet_id_alert_history
+    max_rows: 15
+  - type: history-graph
+    title: Active Alerts (7d)
+    hours_to_show: 168
+    entities:
+      - entity: sensor.ha_whisker_pet_id_alert_history
+        name: Active Alerts
+  - type: logbook
+    title: Alert Events
+    hours_to_show: 168
+    target:
+      entity_id:
+        - binary_sensor.ha_whisker_pet_id_health_alert
+        - sensor.ha_whisker_pet_id_health_summary

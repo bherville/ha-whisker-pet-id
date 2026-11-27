@@ -1,0 +1,22 @@
+# Copy into a Lovelace Manual card (vertical-stack) for Hybrid + Gemini
+# Auto-Pet-ID status, clean weight baselines with cat avatars, and audit log.
+type: vertical-stack
+cards:
+  - type: custom:whisker-auto-pet-id-card
+    title: Hybrid + Gemini Auto-Pet-ID
+    entity: sensor.ha_whisker_pet_id_ai_pet_id_status
+    max_rows: 12
+  - type: entities
+    title: Auto-Pet-ID Controls & Counts
+    entities:
+      - entity: sensor.ha_whisker_pet_id_ai_pet_id_status
+        name: Auto-Pet-ID Mode
+      - entity: sensor.ha_whisker_pet_id_flagged_visits
+        name: Flagged Visits
+  - type: logbook
+    title: Recent Auto-Pet-ID Activity
+    hours_to_show: 72
+    target:
+      entity_id:
+        - sensor.ha_whisker_pet_id_ai_pet_id_status
+        - sensor.ha_whisker_pet_id_flagged_visits

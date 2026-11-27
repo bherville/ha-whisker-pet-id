@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0 - 2026-11-27
+
+- **Built-in Lovelace Custom Cards:** Automatically serves `/ha_whisker_pet_id/cards.js` and registers `custom:whisker-health-archive-card` (overall status badge, Gemini headline callout, interactive All/Active/per-cat filter chips with local cat avatars, and persistent alert history table) and `custom:whisker-auto-pet-id-card` (Auto-Pet-ID mode badge, counters, clean baseline weight pills with cat avatars, and recent AI/fast-path decision audit table).
+- **Bundled Dashboard YAML Templates:** Added ready-to-paste `dashboards/whisker_health_stack.yaml`, `dashboards/whisker_auto_pet_id_stack.yaml`, and `dashboards/cat_avatar_cards.yaml` pairing the built-in custom cards with native Home Assistant `history-graph`, `logbook`, and avatar cards.
+
 ## 0.3.2 - 2026-11-27
 
 ### Patch Changes
