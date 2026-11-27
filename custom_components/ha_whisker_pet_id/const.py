@@ -69,6 +69,8 @@ FAST_PATH_MIN_MARGIN_LBS = 0.60
 FAST_PATH_MIN_ASSIGNED_DELTA_LBS = 1.50
 
 MEDIA_STORAGE_DIRNAME = "ha_whisker_pet_id_media"
+AVATAR_WWW_SUBDIR = "ha_whisker_pet_id/pets"
+AVATAR_LOCAL_URL_PREFIX = "/local/ha_whisker_pet_id/pets"
 AUTO_ID_STORE_KEY = f"{DOMAIN}.auto_id_state"
 AUTO_ID_STORE_VERSION = 1
 

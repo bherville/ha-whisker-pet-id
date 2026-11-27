@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2 - 2026-11-27
+
+### Patch Changes
+
+- Sync square-cropped Whisker pet profile avatars into Home Assistant's static `/local/ha_whisker_pet_id/pets/<pet>.jpg` folder (`www/ha_whisker_pet_id/pets/`) with URL-path caching and automatic 24h refresh.
+- Expose `entity_picture` on per-cat `sensor.ha_whisker_pet_id_<pet>_health_summary` entities for native dashboard thumbnails.
+
 ## 0.3.1 - 2026-11-27
 
 ### Patch Changes

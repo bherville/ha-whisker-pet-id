@@ -390,6 +390,82 @@ class TestAsyncGeminiVisionFlow(unittest.IsolatedAsyncioTestCase):
             leftover = list(visits_dir.iterdir()) if visits_dir.exists() else []
             self.assertEqual(leftover, [])
 
+    async def test_sync_pet_avatars_writes_local_thumbnails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            download_calls = []
+
+            class FakeResp:
+                async def __aenter__(self):
+                    return self
+
+                async def __aexit__(self, *_args):
+                    return False
+
+                def raise_for_status(self) -> None:
+                    pass
+
+                async def read(self) -> bytes:
+                    return b"\xff\xd8\xff\xe0fakejpeg"
+
+            def fake_get(url, **kw):
+                download_calls.append(url)
+                return FakeResp()
+
+            async def fake_executor(fn, *args):
+                return fn(*args)
+
+            hass = SimpleNamespace(
+                config=SimpleNamespace(path=lambda *parts: str(root.joinpath(*parts))),
+                async_add_executor_job=fake_executor,
+            )
+            websession = SimpleNamespace(get=fake_get)
+            pets = [
+                {
+                    "name": "Ember",
+                    "image_url": "https://cdn.example/659030/PET-1/avatar.jpg?Expires=123",
+                },
+                {
+                    "name": "Jane",
+                    "image_url": "https://cdn.example/659030/PET-2/avatar.jpg?Expires=123",
+                },
+            ]
+
+            orig_crop = vision_id._crop_square_avatar_sync
+            vision_id._crop_square_avatar_sync = lambda src, dst, size=256: (
+                dst.write_bytes(src.read_bytes()) or True
+            )
+            try:
+                avatars = await vision_id.async_sync_pet_avatars(hass, websession, pets)
+                self.assertEqual(
+                    avatars,
+                    {
+                        "Ember": "/local/ha_whisker_pet_id/pets/ember.jpg",
+                        "Jane": "/local/ha_whisker_pet_id/pets/jane.jpg",
+                    },
+                )
+                self.assertEqual(len(download_calls), 2)
+                self.assertTrue((root / "www/ha_whisker_pet_id/pets/ember.jpg").is_file())
+
+                # Second call with new S3 signature query string uses cached files (0 extra fetches)
+                pets_resigned = [
+                    {
+                        "name": "Ember",
+                        "image_url": "https://cdn.example/659030/PET-1/avatar.jpg?Expires=999",
+                    },
+                    {
+                        "name": "Jane",
+                        "image_url": "https://cdn.example/659030/PET-2/avatar.jpg?Expires=999",
+                    },
+                ]
+                avatars2 = await vision_id.async_sync_pet_avatars(
+                    hass, websession, pets_resigned
+                )
+                self.assertEqual(avatars2, avatars)
+                self.assertEqual(len(download_calls), 2)
+            finally:
+                vision_id._crop_square_avatar_sync = orig_crop
+
 
 if __name__ == "__main__":
     unittest.main()

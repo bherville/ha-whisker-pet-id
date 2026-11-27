@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 import re
+import shutil
 import statistics
 import time
 from typing import Any
@@ -19,6 +20,8 @@ from .api import (
     normalize_weight_lbs,
 )
 from .const import (
+    AVATAR_LOCAL_URL_PREFIX,
+    AVATAR_WWW_SUBDIR,
     DEFAULT_MAX_TARGET_WEIGHT_DELTA_LBS,
     DEFAULT_MAX_VALID_WEIGHT_LBS,
     DEFAULT_MIN_VALID_WEIGHT_LBS,
@@ -353,6 +356,110 @@ async def async_prepare_reference_attachments(
         False,
         pet_names,
     )
+
+
+def get_avatar_www_dir(hass: HomeAssistant) -> Path:
+    """Return Home Assistant's static www/ha_whisker_pet_id/pets directory."""
+    config = getattr(hass, "config", None)
+    path_fn = getattr(config, "path", None)
+    if callable(path_fn):
+        return Path(path_fn("www", AVATAR_WWW_SUBDIR))
+    return Path("/tmp") / AVATAR_WWW_SUBDIR
+
+
+def _crop_square_avatar_sync(src_path: Path, dest_path: Path, size: int = 256) -> bool:
+    """Save a square-cropped JPEG avatar, or copy bytes directly if Pillow is unavailable."""
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = dest_path.with_suffix(".tmp.jpg")
+    try:
+        from PIL import Image, ImageOps
+
+        with Image.open(src_path) as src:
+            rgb = ImageOps.exif_transpose(src).convert("RGB")
+            cropped = ImageOps.fit(rgb, (size, size), method=Image.Resampling.LANCZOS)
+            cropped.save(tmp_path, format="JPEG", quality=90, optimize=True)
+        tmp_path.replace(dest_path)
+        return True
+    except ImportError:
+        shutil.copyfile(src_path, tmp_path)
+        tmp_path.replace(dest_path)
+        return True
+    except Exception as err:
+        _LOGGER.debug("Failed processing avatar %s: %s", src_path, err)
+        tmp_path.unlink(missing_ok=True)
+        return False
+
+
+async def async_sync_pet_avatars(
+    hass: HomeAssistant,
+    websession: Any,
+    pets: list[dict[str, Any]],
+    *,
+    force_refresh: bool = False,
+) -> dict[str, str]:
+    """Cache square Whisker pet avatars under www/ and return /local URL map."""
+    avatar_dir = get_avatar_www_dir(hass)
+    await hass.async_add_executor_job(
+        lambda: avatar_dir.mkdir(parents=True, exist_ok=True)
+    )
+
+    now = time.time()
+    avatars: dict[str, str] = {}
+
+    for pet in pets:
+        name = str(pet.get("name") or "").strip()
+        image_url = pet.get("image_url")
+        if not name:
+            continue
+
+        slug = _safe_slug(name.lower())
+        dest_path = avatar_dir / f"{slug}.jpg"
+        meta_path = avatar_dir / f"{slug}.url"
+
+        if isinstance(image_url, str) and image_url.strip():
+            url_id = _url_identity_path(image_url)
+            needs_fetch = force_refresh or not dest_path.is_file()
+            if not needs_fetch:
+                try:
+                    age = now - dest_path.stat().st_mtime
+                    prev_url = (
+                        meta_path.read_text(encoding="utf-8").strip()
+                        if meta_path.is_file()
+                        else ""
+                    )
+                    if age > _REF_TTL_SECONDS or prev_url != url_id:
+                        needs_fetch = True
+                except OSError:
+                    needs_fetch = True
+
+            if needs_fetch and websession is not None:
+                raw_tmp = avatar_dir / f".raw_{slug}.jpg"
+                try:
+                    await async_download_media_file(
+                        hass,
+                        websession,
+                        image_url,
+                        raw_tmp,
+                        max_bytes=5 * 1024 * 1024,
+                    )
+                    ok = await hass.async_add_executor_job(
+                        _crop_square_avatar_sync, raw_tmp, dest_path
+                    )
+                    if ok:
+                        await hass.async_add_executor_job(
+                            meta_path.write_text, url_id, "utf-8"
+                        )
+                except Exception as err:
+                    _LOGGER.debug("Failed syncing local avatar for %s: %s", name, err)
+                finally:
+                    await hass.async_add_executor_job(
+                        raw_tmp.unlink, True
+                    )
+
+        if dest_path.is_file():
+            avatars[name] = f"{AVATAR_LOCAL_URL_PREFIX}/{slug}.jpg"
+
+    return avatars
 
 
 def _format_roster_lines(

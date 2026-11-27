@@ -329,6 +329,12 @@ class WhiskerPetHealthSummarySensor(
         return str(summary_item.get("status") or "unknown")
 
     @property
+    def entity_picture(self) -> str | None:
+        """Return cached local Whisker pet avatar thumbnail URL if available."""
+        stats, _ = self._pet_entry()
+        return stats.get("avatar_url") or self.coordinator.get_pet_avatar(self._pet_name)
+
+    @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return per-cat metrics, clusters, and summary narrative."""
         data = self.coordinator.data or {}

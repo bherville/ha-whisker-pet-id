@@ -82,6 +82,7 @@ from .media_source import cleanup_stale_visit_media, get_media_root
 from .vision_id import (
     GeminiRateLimitError,
     async_prepare_reference_attachments,
+    async_sync_pet_avatars,
     async_verify_visit_with_gemini,
     compute_clean_baselines,
     evaluate_hybrid_fast_path,
@@ -110,10 +111,15 @@ class WhiskerHealthCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_alert_by_pet: dict[str, tuple[str, datetime]] = {}
         self._bootstrap_done = False
         self._alert_history: AlertHistoryManager | None = None
+        self._pet_avatars: dict[str, str] = {}
 
     def attach_alert_history(self, alert_history: AlertHistoryManager) -> None:
         """Attach persistent alert history manager."""
         self._alert_history = alert_history
+
+    def get_pet_avatar(self, pet_name: str) -> str | None:
+        """Return cached /local pet avatar URL if available."""
+        return self._pet_avatars.get(pet_name)
 
     def option(self, key: str, default: Any) -> Any:
         """Read a configured option from the entry with fallback default."""
@@ -211,6 +217,18 @@ class WhiskerHealthCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             cluster_min_visits=cluster_min,
         )
 
+        try:
+            _, _, account = get_litterrobot_runtime(self.hass)
+            websession = getattr(getattr(account, "session", None), "websession", None)
+            self._pet_avatars = await async_sync_pet_avatars(
+                self.hass, websession, pets_resp.get("pets", [])
+            )
+            for pname, pstats in context.get("pets", {}).items():
+                if pname in self._pet_avatars:
+                    pstats["avatar_url"] = self._pet_avatars[pname]
+        except Exception as err:
+            _LOGGER.debug("Skipping pet avatar sync: %s", err)
+
         if use_ai:
             summary = await async_generate_ai_health_summary(
                 self.hass,
@@ -238,6 +256,7 @@ class WhiskerHealthCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "clusters_detected": context["clusters_detected"],
             "clusters": context["clusters"],
             "pets": context["pets"],
+            "pet_avatars": dict(self._pet_avatars),
             **summary,
         }
 
