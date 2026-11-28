@@ -1,6 +1,6 @@
 /* Built-in Lovelace cards for HA Whisker Pet ID */
 
-const CARD_VERSION = "0.5.3";
+const CARD_VERSION = "0.5.4";
 
 const DEFAULT_HEALTH_ENTITY = "sensor.ha_whisker_pet_id_health_summary";
 const DEFAULT_HISTORY_ENTITY = "sensor.ha_whisker_pet_id_alert_history";
@@ -545,10 +545,11 @@ class WhiskerHealthArchiveCard extends HTMLElement {
       title: "Pet Health & Alert Archive",
       health_entity: DEFAULT_HEALTH_ENTITY,
       alert_history_entity: DEFAULT_HISTORY_ENTITY,
+      default_filter: "active",
       page_size: 8,
       max_rows: 25,
     };
-    this._filter = "all";
+    this._filter = "active";
     this._page = 0;
     this._expandedIds = new Set();
     this._lastSig = "";
@@ -559,6 +560,7 @@ class WhiskerHealthArchiveCard extends HTMLElement {
       title: "Pet Health & Alert Archive",
       health_entity: DEFAULT_HEALTH_ENTITY,
       alert_history_entity: DEFAULT_HISTORY_ENTITY,
+      default_filter: "active",
       page_size: 8,
       max_rows: 25,
     };
@@ -577,13 +579,19 @@ class WhiskerHealthArchiveCard extends HTMLElement {
     }
     const maxRows = Math.max(1, Number(config.max_rows || 25));
     const pageSize = Math.max(1, Number(config.page_size || 8));
+    const defaultFilter =
+      String(config.default_filter || "active").toLowerCase() === "all"
+        ? "all"
+        : "active";
     this._config = {
       title: config.title || "Pet Health & Alert Archive",
       health_entity: config.health_entity || DEFAULT_HEALTH_ENTITY,
       alert_history_entity: config.alert_history_entity || DEFAULT_HISTORY_ENTITY,
+      default_filter: defaultFilter,
       page_size: pageSize,
       max_rows: maxRows,
     };
+    this._filter = defaultFilter;
     this._page = 0;
     this._lastSig = "";
     this._render();
@@ -933,7 +941,11 @@ class WhiskerHealthArchiveCard extends HTMLElement {
             return mainRow + detailRow;
           })
           .join("")
-      : `<tr><td colspan="4" class="empty">No alerts matching this filter.</td></tr>`;
+      : `<tr><td colspan="4" class="empty">${
+          this._filter === "active"
+            ? "All clear — no active alerts right now."
+            : "No alerts matching this filter."
+        }</td></tr>`;
 
     const pagerHtml = renderPagerHtml(allFiltered.length, this._page, pageSize);
 
@@ -960,11 +972,11 @@ class WhiskerHealthArchiveCard extends HTMLElement {
         </div>
 
         <div class="filters">
-          <button class="chip ${this._filter === "all" ? "active" : ""}" data-filter="all" type="button">
-            All (${recentAlerts.length})
-          </button>
           <button class="chip ${this._filter === "active" ? "active" : ""}" data-filter="active" type="button">
             Active (${activeCount})
+          </button>
+          <button class="chip ${this._filter === "all" ? "active" : ""}" data-filter="all" type="button">
+            All (${recentAlerts.length})
           </button>
           ${petChipsHtml}
         </div>

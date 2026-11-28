@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.4 - 2026-11-27
+
+- **Open Health Archive on Active Alerts by Default:** Updated `custom:whisker-health-archive-card` to default to the `Active` filter (overridable via `default_filter: all`), placed `Active` first in the filter bar so resolved history stays neatly tucked behind `All`, and shows a friendly all-clear message when no active alerts remain.
+
 ## 0.5.3 - 2026-11-27
 
 - **Suppress Stale Mismatches on Reassigned Visits:** Updated `build_health_context` in `health.py` to ignore `weight_mismatch` flags on visits where `is_reassigned: true`, while keeping all visit/weight/cluster telemetry intact and preserving full mismatch detection for all un-reassigned visits.

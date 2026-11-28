@@ -67,6 +67,8 @@ class TestFrontendCards(unittest.TestCase):
         self.assertIn("What Happened", content)
         self.assertIn("row-avatar", content)
         self.assertIn("col-when", content)
+        self.assertIn("default_filter", content)
+        self.assertIn("All clear — no active alerts right now.", content)
         self.assertIn("decision-row", content)
         self.assertIn("_renderDecisionDetailsHtml", content)
         self.assertIn("Original Cat", content)
