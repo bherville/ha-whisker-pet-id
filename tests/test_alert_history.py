@@ -220,6 +220,88 @@ class TestAlertHistoryManager(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(mgr.query()["total_logged"], 10)
 
+    async def test_multi_cat_health_summary_creates_separate_per_cat_alerts_and_prunes_legacy(
+        self,
+    ) -> None:
+        hass, _ = self._make_hass()
+        mgr = alert_history.AlertHistoryManager(hass, max_entries=20)
+        mgr._entries.append(
+            {
+                "alert_id": "health_summary:alert:Jane,Lexi",
+                "source": "health_summary",
+                "severity": "alert",
+                "status": "active",
+                "opened_at": "2026-11-27T10:00:00+00:00",
+                "pets": ["Jane", "Lexi"],
+                "headline": "Old combined alert",
+            }
+        )
+        t1 = datetime(2026, 11, 27, 15, 0, tzinfo=timezone.utc)
+
+        await mgr.async_record_health_report(
+            {
+                "trigger": "startup",
+                "generation_mode": "fallback",
+                "overall_status": "watch",
+                "headline": "Startup fallback",
+                "pet_summaries": {
+                    "Ember": {"status": "watch", "summary": "Startup watch"},
+                },
+                "clusters": [],
+            },
+            now=t1,
+        )
+        self.assertEqual(mgr.get_sensor_payload()["total_logged"], 0)
+
+        res1 = await mgr.async_record_health_report(
+            {
+                "trigger": "service",
+                "generation_mode": "gemini",
+                "overall_status": "alert",
+                "headline": "Household alert",
+                "clusters_detected": 0,
+                "flagged_visits_count": 3,
+                "pet_summaries": {
+                    "Ember": {"status": "watch", "summary": "Suspected misassigned visit."},
+                    "Jane": {"status": "watch", "summary": "Weight mismatch flagged."},
+                    "Lexi": {"status": "alert", "summary": "Frequent visits today."},
+                    "Oreo": {"status": "normal", "summary": "Normal."},
+                },
+                "clusters": [],
+            },
+            now=t1 + timedelta(minutes=5),
+        )
+        self.assertEqual(res1, {"opened": 3, "resolved": 0})
+        alerts = mgr.get_sensor_payload()["recent_alerts"]
+        self.assertEqual(len(alerts), 3)
+        self.assertTrue(all(len(a["pets"]) == 1 for a in alerts))
+        self.assertEqual(
+            {a["alert_id"] for a in alerts},
+            {"pet_health:Ember", "pet_health:Jane", "pet_health:Lexi"},
+        )
+
+        res2 = await mgr.async_record_health_report(
+            {
+                "trigger": "service",
+                "generation_mode": "gemini",
+                "overall_status": "alert",
+                "headline": "Household alert",
+                "pet_summaries": {
+                    "Ember": {"status": "watch", "summary": "Suspected misassigned visit."},
+                    "Jane": {"status": "normal", "summary": "Normal now."},
+                    "Lexi": {"status": "alert", "summary": "Frequent visits today."},
+                },
+                "clusters": [],
+            },
+            now=t1 + timedelta(minutes=20),
+        )
+        self.assertEqual(res2, {"opened": 0, "resolved": 1})
+        self.assertEqual(mgr.get_sensor_payload()["active_count"], 2)
+        jane = next(
+            a for a in mgr.get_sensor_payload()["recent_alerts"] if a["alert_id"] == "pet_health:Jane"
+        )
+        self.assertEqual(jane["status"], "resolved")
+
 
 if __name__ == "__main__":
     unittest.main()

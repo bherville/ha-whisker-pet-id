@@ -1,6 +1,6 @@
 /* Built-in Lovelace cards for HA Whisker Pet ID */
 
-const CARD_VERSION = "0.5.0";
+const CARD_VERSION = "0.5.1";
 
 const DEFAULT_HEALTH_ENTITY = "sensor.ha_whisker_pet_id_health_summary";
 const DEFAULT_HISTORY_ENTITY = "sensor.ha_whisker_pet_id_alert_history";
@@ -486,13 +486,44 @@ const SHARED_STYLES = `
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
+  .pet-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+  .row-avatar {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: var(--secondary-background-color, rgba(127, 127, 127, 0.2));
+  }
+  .alert-main {
+    font-weight: 500;
+    color: var(--primary-text-color);
+    line-height: 1.35;
+  }
+  .alert-meta {
+    font-size: 0.72rem;
+    color: var(--secondary-text-color);
+    margin-top: 2px;
+  }
+  .inline-when {
+    display: none;
+  }
   @container (max-width: 470px) {
-    .col-weight {
+    .col-weight,
+    .col-when {
       display: none;
     }
     .inline-weight {
       display: block;
       margin-top: 2px;
+    }
+    .inline-when {
+      display: inline;
     }
     th,
     td {
@@ -587,6 +618,44 @@ class WhiskerHealthArchiveCard extends HTMLElement {
     if (val === "health_summary") return "AI Health Summary";
     if (val === "pet_id_review") return "Smart Cat ID Review";
     return titleCaseWords(source || "alert");
+  }
+
+  _formatAlertCategory(source) {
+    const val = String(source || "").toLowerCase();
+    if (val === "health_cluster") return "Repeat Visits";
+    if (val === "health_summary") return "Health Check";
+    if (val === "pet_id_review") return "Cat ID Review";
+    return titleCaseWords(source || "alert");
+  }
+
+  _formatAlertHeadline(item) {
+    let text = String(item?.headline || "—").trim();
+    const pets = Array.isArray(item?.pets) ? item.pets.map(String) : [];
+    if (pets.length === 1) {
+      const prefix = `${pets[0]}:`;
+      if (text.toLowerCase().startsWith(prefix.toLowerCase())) {
+        text = text.slice(prefix.length).trim();
+      }
+    }
+    text = text
+      .replace(/\b(\d+(?:\.\d+)?)\s*m\b/g, (_, num) => `${Math.round(Number(num))} min`)
+      .replace(/\bzero-waste\b/gi, "with no waste")
+      .replace(/\((\d+)\s+with no waste\)/gi, "($1 with no waste)");
+    return text || "—";
+  }
+
+  _formatRowStatusLabel(item) {
+    const status = String(item?.status || "active").toLowerCase();
+    if (status === "resolved") return "Resolved";
+    const sev = String(item?.severity || status).toLowerCase();
+    return sev === "watch" ? "Watch" : "Alert";
+  }
+
+  _rowStatusClass(item) {
+    const status = String(item?.status || "active").toLowerCase();
+    if (status === "resolved") return "resolved";
+    const sev = String(item?.severity || status).toLowerCase();
+    return sev === "watch" ? "watch" : "active";
   }
 
   _renderAlertDetailsHtml(item) {
@@ -825,10 +894,17 @@ class WhiskerHealthArchiveCard extends HTMLElement {
     const rowsHtml = pageRows.length
       ? pageRows
           .map((item, idx) => {
-            const status = String(item?.status || "active").toLowerCase();
-            const sev = String(item?.severity || status).toLowerCase();
-            const pillClass = status === "resolved" ? "resolved" : sev === "watch" ? "watch" : "active";
-            const pets = Array.isArray(item?.pets) && item.pets.length ? item.pets.join(", ") : "Household";
+            const pillLabel = this._formatRowStatusLabel(item);
+            const pillClass = this._rowStatusClass(item);
+            const petList = Array.isArray(item?.pets) ? item.pets.map(String).filter(Boolean) : [];
+            const petLabel = petList.length ? petList.join(", ") : "Household";
+            const primaryPet = petList.length === 1 ? petList[0] : "";
+            const avatarUrl = primaryPet ? resolvePetAvatarUrl(this._hass, primaryPet) : "";
+            const avatarHtml = avatarUrl
+              ? `<img class="row-avatar" src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(primaryPet)}" onerror="this.style.display='none'" />`
+              : "";
+            const cleanHeadline = this._formatAlertHeadline(item);
+            const category = this._formatAlertCategory(item?.source);
             const opened = formatTimestamp(item?.opened_at || item?.last_seen_at);
             const alertKey = String(
               item?.alert_id || `${item?.source || "alert"}:${item?.opened_at || ""}:${start + idx}`
@@ -837,14 +913,18 @@ class WhiskerHealthArchiveCard extends HTMLElement {
             const mainRow = `
               <tr class="alert-row ${isExpanded ? "expanded" : ""}" data-alert-key="${escapeHtml(alertKey)}" tabindex="0" role="button" aria-expanded="${isExpanded ? "true" : "false"}">
                 <td>
-                  <span class="status-cell">
+                  <span class="pet-cell">
                     <span class="expand-icon">▸</span>
-                    <span class="status-pill ${escapeHtml(pillClass)}">${escapeHtml(status)}</span>
+                    ${avatarHtml}
+                    <strong>${escapeHtml(petLabel)}</strong>
                   </span>
                 </td>
-                <td><strong>${escapeHtml(pets)}</strong></td>
-                <td>${escapeHtml(item?.headline || "—")}</td>
-                <td class="mono">${escapeHtml(opened)}</td>
+                <td>
+                  <div class="alert-main">${escapeHtml(cleanHeadline)}</div>
+                  <div class="alert-meta">${escapeHtml(category)}<span class="inline-when"> · ${escapeHtml(opened)}</span></div>
+                </td>
+                <td><span class="status-pill ${escapeHtml(pillClass)}">${escapeHtml(pillLabel)}</span></td>
+                <td class="col-when mono">${escapeHtml(opened)}</td>
               </tr>
             `;
             const detailRow = isExpanded
@@ -893,10 +973,10 @@ class WhiskerHealthArchiveCard extends HTMLElement {
           <table>
             <thead>
               <tr>
+                <th>Cat</th>
+                <th>What Happened</th>
                 <th>Status</th>
-                <th>Pet</th>
-                <th>Alert</th>
-                <th>Opened</th>
+                <th class="col-when">When</th>
               </tr>
             </thead>
             <tbody>

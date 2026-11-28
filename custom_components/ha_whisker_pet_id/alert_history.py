@@ -62,9 +62,18 @@ class AlertHistoryManager:
         if isinstance(stored, dict):
             raw = stored.get("entries") or []
             if isinstance(raw, list):
-                self._entries = [
+                valid_entries = [
                     dict(item) for item in raw[: self._max_entries] if isinstance(item, dict)
                 ]
+                filtered_entries = [
+                    item
+                    for item in valid_entries
+                    if not str(item.get("alert_id") or "").startswith("health_summary:")
+                ]
+                pruned = len(filtered_entries) != len(valid_entries)
+                self._entries = filtered_entries
+                if pruned:
+                    await self.async_save()
 
     async def async_save(self) -> None:
         """Persist bounded alert list and notify entity listeners."""
@@ -127,8 +136,15 @@ class AlertHistoryManager:
 
             count = int(cluster.get("count") or 0)
             dur = cluster.get("duration_minutes")
+            if isinstance(dur, (int, float)) and not isinstance(dur, bool):
+                dur_str = str(round(float(dur)))
+            else:
+                dur_str = str(dur if dur is not None else 0)
             zw = int(cluster.get("zero_waste_count") or 0)
-            headline = f"{pet_name}: {count} visits in {dur}m ({zw} zero-waste)"
+            if zw > 0:
+                headline = f"{count} quick visits in {dur_str} min ({zw} with no waste)"
+            else:
+                headline = f"{count} quick visits in {dur_str} min"
 
             existing = self._find_entry(alert_id)
             if existing is None:
@@ -178,84 +194,119 @@ class AlertHistoryManager:
                 changed = True
                 resolved += 1
 
-        # 2. Sync overall health summary alert/watch
-        overall = str(report.get("overall_status") or "normal").strip().casefold()
-        pet_summaries = report.get("pet_summaries") or {}
-        flagged_pets = [
-            name
-            for name, info in pet_summaries.items()
-            if isinstance(info, dict)
-            and str(info.get("status") or "").casefold() in ("watch", "alert")
+        # 2. Remove legacy combined household entries & sync one health_summary alert per cat
+        before_prune = len(self._entries)
+        self._entries = [
+            item
+            for item in self._entries
+            if not str(item.get("alert_id") or "").startswith("health_summary:")
         ]
-        if not flagged_pets:
-            flagged_pets = [str(p) for p in (report.get("alert_pets") or []) if p]
+        if len(self._entries) != before_prune:
+            changed = True
 
-        active_summary_id: str | None = None
-        if overall in ("watch", "alert"):
-            key_pets = ",".join(sorted(flagged_pets)) or "household"
-            active_summary_id = f"health_summary:{overall}:{key_pets}"
-            headline = str(report.get("headline") or f"Health status: {overall}")
-            details = {
-                "generation_mode": report.get("generation_mode"),
-                "clusters_detected": report.get("clusters_detected", 0),
-                "flagged_visits_count": report.get("flagged_visits_count", 0),
-                "alert_message": report.get("alert_message", ""),
-                "pet_statuses": {
-                    name: info.get("status")
-                    for name, info in pet_summaries.items()
-                    if isinstance(info, dict)
-                },
-            }
-            existing = self._find_entry(active_summary_id)
-            if existing is None:
-                entry = {
-                    "alert_id": active_summary_id,
-                    "source": "health_summary",
-                    "severity": overall,
-                    "status": "active",
-                    "opened_at": now_iso,
-                    "last_seen_at": now_iso,
-                    "resolved_at": None,
-                    "pets": list(flagged_pets),
-                    "headline": headline,
-                    "notified_services": list(notified),
-                    "details": details,
+        is_startup_fallback = (
+            report.get("trigger") == "startup"
+            and report.get("generation_mode") == "fallback"
+        )
+        if not is_startup_fallback:
+            overall = str(report.get("overall_status") or "normal").strip().casefold()
+            pet_summaries = report.get("pet_summaries") or {}
+            flagged_pets_map: dict[str, tuple[str, str]] = {}
+
+            if isinstance(pet_summaries, dict):
+                for name, info in pet_summaries.items():
+                    if not isinstance(info, dict):
+                        continue
+                    pet_status = str(info.get("status") or "").strip().casefold()
+                    if pet_status not in ("watch", "alert"):
+                        continue
+                    pet_name = str(name).strip()
+                    if not pet_name:
+                        continue
+                    pet_headline = str(
+                        info.get("summary") or f"{pet_name} flagged ({pet_status})"
+                    ).strip()
+                    flagged_pets_map[pet_name] = (pet_status, pet_headline)
+
+            if not flagged_pets_map and overall in ("watch", "alert"):
+                fallback_pets = [str(p).strip() for p in (report.get("alert_pets") or []) if p]
+                if not fallback_pets:
+                    fallback_pets = ["Household"]
+                fallback_msg = str(
+                    report.get("headline") or f"Health status: {overall}"
+                ).strip()
+                for pet_name in fallback_pets:
+                    flagged_pets_map[pet_name] = (overall, fallback_msg)
+
+            active_pet_health_ids: set[str] = set()
+            for pet_name, (pet_status, pet_headline) in flagged_pets_map.items():
+                alert_id = f"pet_health:{pet_name}"
+                active_pet_health_ids.add(alert_id)
+                details = {
+                    "generation_mode": report.get("generation_mode"),
+                    "clusters_detected": report.get("clusters_detected", 0),
+                    "flagged_visits_count": report.get("flagged_visits_count", 0),
+                    "pet_status": pet_status,
+                    "household_headline": report.get("headline"),
                 }
-                self._entries.insert(0, entry)
-                self._fire_alert_event("opened", entry)
-                changed = True
-                opened += 1
-            else:
-                if existing.get("status") != "active":
-                    existing["status"] = "active"
-                    existing["resolved_at"] = None
-                    self._fire_alert_event("opened", existing)
+                existing = self._find_entry(alert_id)
+                if existing is None:
+                    entry = {
+                        "alert_id": alert_id,
+                        "source": "health_summary",
+                        "severity": pet_status,
+                        "status": "active",
+                        "opened_at": now_iso,
+                        "last_seen_at": now_iso,
+                        "resolved_at": None,
+                        "pets": [pet_name],
+                        "headline": pet_headline,
+                        "notified_services": list(notified),
+                        "details": details,
+                    }
+                    self._entries.insert(0, entry)
+                    self._fire_alert_event("opened", entry)
                     changed = True
                     opened += 1
-                if existing.get("headline") != headline:
-                    existing["headline"] = headline
-                    changed = True
-                if notified:
-                    merged = list(
-                        dict.fromkeys([*(existing.get("notified_services") or []), *notified])
-                    )
-                    if merged != (existing.get("notified_services") or []):
-                        existing["notified_services"] = merged
+                else:
+                    if existing.get("status") != "active":
+                        existing["status"] = "active"
+                        existing["resolved_at"] = None
+                        self._fire_alert_event("opened", existing)
                         changed = True
-                existing["last_seen_at"] = now_iso
-                existing["details"] = details
+                        opened += 1
+                    if existing.get("severity") != pet_status:
+                        existing["severity"] = pet_status
+                        changed = True
+                    if existing.get("headline") != pet_headline:
+                        existing["headline"] = pet_headline
+                        changed = True
+                    if existing.get("pets") != [pet_name]:
+                        existing["pets"] = [pet_name]
+                        changed = True
+                    if notified:
+                        merged = list(
+                            dict.fromkeys(
+                                [*(existing.get("notified_services") or []), *notified]
+                            )
+                        )
+                        if merged != (existing.get("notified_services") or []):
+                            existing["notified_services"] = merged
+                            changed = True
+                    existing["last_seen_at"] = now_iso
+                    existing["details"] = details
 
-        for item in self._entries:
-            if (
-                item.get("source") == "health_summary"
-                and item.get("status") == "active"
-                and item.get("alert_id") != active_summary_id
-            ):
-                item["status"] = "resolved"
-                item["resolved_at"] = now_iso
-                self._fire_alert_event("resolved", item)
-                changed = True
-                resolved += 1
+            for item in self._entries:
+                if (
+                    item.get("source") == "health_summary"
+                    and item.get("status") == "active"
+                    and item.get("alert_id") not in active_pet_health_ids
+                ):
+                    item["status"] = "resolved"
+                    item["resolved_at"] = now_iso
+                    self._fire_alert_event("resolved", item)
+                    changed = True
+                    resolved += 1
 
         if changed:
             await self.async_save()

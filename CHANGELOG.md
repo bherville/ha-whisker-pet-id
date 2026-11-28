@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1 - 2026-11-27
+
+- **Per-Cat Alert Archive & Clearer Rows:** Refactored `AlertHistoryManager` to record one individual `pet_health:<cat>` alert per flagged cat instead of combining multiple cats into confusing household blobs (automatically pruning legacy multi-cat entries), skips transient startup fallback entries, formats repeat-visit cluster alerts in plain English (`3 quick visits in 16 min (1 with no waste)`), and redesigns `custom:whisker-health-archive-card` to display `Cat | What Happened | Status | When` with circular cat avatars, plain category tags (`Repeat Visits`, `Health Check`, `Cat ID Review`), and responsive narrow-column timestamps.
+
 ## 0.5.0 - 2026-11-27
 
 - **On-Demand Fix Pet ID Mismatches Button (`button.ha_whisker_pet_id_fix_pet_id_mismatches`):** Added a native Home Assistant `button` entity under the integration service device so dashboards, automations, scripts, and Assist can trigger Hybrid + Gemini verification & auto-reassignment on recent flagged, un-reassigned visits on demand.

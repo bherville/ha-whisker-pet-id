@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "ha_whisker_pet_id"
-INTEGRATION_VERSION = "0.5.0"
+INTEGRATION_VERSION = "0.5.1"
 FRONTEND_SCRIPT_URL = f"/{DOMAIN}/cards.js"
 LITTERROBOT_DOMAIN = "litterrobot"
 

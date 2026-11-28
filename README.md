@@ -36,7 +36,7 @@ It piggybacks directly on Home Assistant's already-authenticated **Whisker (`lit
 
 When loaded, `ha_whisker_pet_id` automatically serves `/ha_whisker_pet_id/cards.js` via Home Assistant static HTTP paths and `add_extra_js_url` (no manual Lovelace resource entry required). Two cards appear in the visual dashboard card picker and work in YAML dashboards:
 
-- **`custom:whisker-health-archive-card`** — Displays household health status badge, Gemini headline callout, interactive `All` / `Active` / per-cat filter chips (with `/local/ha_whisker_pet_id/pets/<slug>.jpg` avatars), and a paginated alert archive with clickable rows to expand full alert details (source, severity, timestamps, notifications, and cluster/summary info).
+- **`custom:whisker-health-archive-card`** — Displays household health status badge, Gemini headline callout, interactive `All` / `Active` / per-cat filter chips (with `/local/ha_whisker_pet_id/pets/<slug>.jpg` avatars), and a paginated per-cat alert archive (`Cat | What Happened | Status | When`) with clickable rows to expand full alert details.
 - **`custom:whisker-auto-pet-id-card`** — Displays **Smart Cat ID** status, clean baseline weights per cat with avatars, and a paginated activity log (`page_size`, wide `getGridOptions()` support for Home Assistant Sections dashboards) with clickable rows to inspect full visit reasoning, weight vs. baseline diff, confidence, and visual match.
 
 Ready-to-paste dashboard stacks pairing these custom cards with native Home Assistant `history-graph`, `logbook`, and cat avatar cards are included under [`dashboards/`](dashboards/).
