@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.3 - 2026-11-27
+
+- **Expandable Smart Cat ID Rows:** Made every visit row in **Smart Cat ID** (`custom:whisker-auto-pet-id-card`) clickable (and keyboard-accessible) to expand an inline detail drawer showing original vs. verified cat, measured weight vs. baseline difference, method, confidence score, visual match, timestamps, event ID, and full AI/fast-path reasoning.
+
 ## 0.4.2 - 2026-11-27
 
 - **Expandable Health Alert Archive Rows:** Removed the `Source` column from `custom:whisker-health-archive-card` and made every alert row clickable (and keyboard-accessible) to expand an inline detail drawer showing the full source (`Repeat-Visit Cluster`, `AI Health Summary`, `Smart Cat ID Review`), severity, timestamps, notified services, and structured alert details.

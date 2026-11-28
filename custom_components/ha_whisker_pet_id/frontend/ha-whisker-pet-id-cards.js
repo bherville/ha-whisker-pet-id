@@ -1,6 +1,6 @@
 /* Built-in Lovelace cards for HA Whisker Pet ID */
 
-const CARD_VERSION = "0.4.2";
+const CARD_VERSION = "0.4.3";
 
 const DEFAULT_HEALTH_ENTITY = "sensor.ha_whisker_pet_id_health_summary";
 const DEFAULT_HISTORY_ENTITY = "sensor.ha_whisker_pet_id_alert_history";
@@ -296,18 +296,22 @@ const SHARED_STYLES = `
   tr:last-child td {
     border-bottom: none;
   }
-  .alert-row {
+  .alert-row,
+  .decision-row {
     cursor: pointer;
     transition: background 0.12s ease;
   }
-  .alert-row:hover td {
+  .alert-row:hover td,
+  .decision-row:hover td {
     background: var(--secondary-background-color, rgba(127, 127, 127, 0.08));
   }
-  .alert-row:focus-visible {
+  .alert-row:focus-visible,
+  .decision-row:focus-visible {
     outline: 2px solid var(--primary-color, #03a9f4);
     outline-offset: -2px;
   }
-  .status-cell {
+  .status-cell,
+  .time-cell {
     display: inline-flex;
     align-items: center;
     gap: 5px;
@@ -321,7 +325,8 @@ const SHARED_STYLES = `
     transition: transform 0.15s ease;
     text-align: center;
   }
-  .alert-row.expanded .expand-icon {
+  .alert-row.expanded .expand-icon,
+  .decision-row.expanded .expand-icon {
     transform: rotate(90deg);
   }
   .detail-row td {
@@ -462,6 +467,10 @@ const SHARED_STYLES = `
     td {
       padding: 6px 6px;
       font-size: 0.78rem;
+    }
+    .status-pill {
+      padding: 2px 6px;
+      font-size: 0.7rem;
     }
   }
 `;
@@ -915,6 +924,7 @@ class WhiskerAutoPetIdCard extends HTMLElement {
       max_rows: 25,
     };
     this._page = 0;
+    this._expandedIds = new Set();
     this._lastSig = "";
   }
 
@@ -997,8 +1007,11 @@ class WhiskerAutoPetIdCard extends HTMLElement {
     if (val === "reassigned") return "Reassigned";
     if (val === "confirmed") return "Confirmed";
     if (val === "unassigned_scale_glitch" || val === "unassigned") return "Cleared";
+    if (val === "needs_review" || val === "uncertain") return "Needs Review";
+    if (val.startsWith("dry_run_")) {
+      return `Suggested (${titleCaseWords(val.slice("dry_run_".length))})`;
+    }
     if (val === "suggested") return "Suggested";
-    if (val === "uncertain") return "Needs Review";
     if (val === "kept") return "Kept";
     return action ? titleCaseWords(action) : "—";
   }
@@ -1008,8 +1021,118 @@ class WhiskerAutoPetIdCard extends HTMLElement {
     if (val.includes("reassign")) return "reassigned";
     if (val.includes("confirm")) return "confirmed";
     if (val.includes("unassign")) return "unassigned";
-    if (val.includes("suggest") || val.includes("uncertain")) return "uncertain";
+    if (
+      val.includes("suggest") ||
+      val.includes("uncertain") ||
+      val.includes("review") ||
+      val.startsWith("dry_run_")
+    ) {
+      return "uncertain";
+    }
     return "muted";
+  }
+
+  _formatConfidence(d) {
+    const label = d?.confidence ? titleCaseWords(d.confidence) : "";
+    const rawScore = d?.confidence_score;
+    const score = Number(rawScore);
+    if (
+      rawScore !== null &&
+      rawScore !== undefined &&
+      rawScore !== "" &&
+      Number.isFinite(score)
+    ) {
+      const pct = score >= 0 && score <= 1 ? `${Math.round(score * 100)}%` : `${Math.round(score)}%`;
+      return label ? `${label} (${pct})` : pct;
+    }
+    return label || "—";
+  }
+
+  _toggleRow(decisionKey) {
+    if (!decisionKey) return;
+    if (this._expandedIds.has(decisionKey)) {
+      this._expandedIds.delete(decisionKey);
+    } else {
+      this._expandedIds.add(decisionKey);
+    }
+    this._render();
+  }
+
+  _renderDecisionDetailsHtml(d, baselinesObj) {
+    const fields = [];
+    const addField = (label, value) => {
+      if (value === null || value === undefined || value === "") return;
+      fields.push(`
+        <div class="detail-item">
+          <span class="detail-label">${escapeHtml(label)}</span>
+          <span class="detail-value">${escapeHtml(value)}</span>
+        </div>
+      `);
+    };
+
+    const fromPet = d?.from_pet || "Unassigned";
+    const toPet = d?.to_pet || "Unassigned";
+    const hasWeight =
+      d?.weight_lbs !== null &&
+      d?.weight_lbs !== undefined &&
+      d?.weight_lbs !== "" &&
+      Number.isFinite(Number(d.weight_lbs));
+    const measuredNum = hasWeight ? Number(d.weight_lbs) : null;
+
+    addField("Original Cat", fromPet);
+    addField("Verified Cat", toPet);
+    addField("Measured Weight", measuredNum !== null ? `${measuredNum.toFixed(2)} lb` : "—");
+
+    const baselineRaw = baselinesObj && toPet ? baselinesObj[toPet] : undefined;
+    if (
+      baselineRaw !== null &&
+      baselineRaw !== undefined &&
+      Number.isFinite(Number(baselineRaw))
+    ) {
+      const baseNum = Number(baselineRaw);
+      let baseText = `${toPet} ${baseNum.toFixed(2)} lb`;
+      if (measuredNum !== null) {
+        const diff = measuredNum - baseNum;
+        const sign = diff >= 0 ? "+" : "";
+        baseText += ` (Δ ${sign}${diff.toFixed(2)} lb)`;
+      }
+      addField("Baseline Diff", baseText);
+    }
+
+    addField("Method", this._formatStage(d?.stage));
+    addField("Confidence", this._formatConfidence(d));
+
+    if (
+      d?.visual_match !== null &&
+      d?.visual_match !== undefined &&
+      d?.visual_match !== ""
+    ) {
+      const vm =
+        typeof d.visual_match === "boolean"
+          ? d.visual_match
+            ? "Yes"
+            : "No"
+          : String(d.visual_match);
+      addField("Visual Match", vm);
+    }
+
+    addField("Result", this._formatAction(d?.action));
+    addField("Visit Time", formatTimestamp(d?.local_time || d?.timestamp));
+    if (d?.processed_at) {
+      addField("Processed", formatTimestamp(d.processed_at));
+    }
+    if (d?.event_id) {
+      addField("Event ID", String(d.event_id));
+    }
+
+    const noteHtml = d?.reasoning
+      ? `<div class="detail-note">${escapeHtml(d.reasoning)}</div>`
+      : "";
+
+    return `
+      <div class="detail-grid">${fields.join("")}</div>
+      ${noteHtml}
+    `;
   }
 
   _render() {
@@ -1068,7 +1191,7 @@ class WhiskerAutoPetIdCard extends HTMLElement {
 
     const rowsHtml = pageRows.length
       ? pageRows
-          .map((d) => {
+          .map((d, idx) => {
             const time = formatTimestamp(d?.local_time || d?.timestamp);
             const wt = Number.isFinite(Number(d?.weight_lbs))
               ? `${Number(d.weight_lbs).toFixed(2)} lb`
@@ -1080,9 +1203,19 @@ class WhiskerAutoPetIdCard extends HTMLElement {
             const resultLabel = this._formatAction(d?.action);
             const conf = d?.confidence ? ` (${titleCaseWords(d.confidence)})` : "";
             const actionCls = this._actionClass(d?.action);
-            return `
-              <tr>
-                <td class="mono">${escapeHtml(time)}</td>
+            const decisionKey = String(
+              d?.event_id ||
+                `${d?.local_time || d?.timestamp || ""}:${d?.weight_lbs || ""}:${start + idx}`
+            );
+            const isExpanded = this._expandedIds.has(decisionKey);
+            const mainRow = `
+              <tr class="decision-row ${isExpanded ? "expanded" : ""}" data-decision-key="${escapeHtml(decisionKey)}" tabindex="0" role="button" aria-expanded="${isExpanded ? "true" : "false"}">
+                <td class="mono">
+                  <span class="time-cell">
+                    <span class="expand-icon">▸</span>
+                    <span>${escapeHtml(time)}</span>
+                  </span>
+                </td>
                 <td class="col-weight mono">${escapeHtml(wt)}</td>
                 <td>
                   <strong>${escapeHtml(route)}</strong>
@@ -1092,6 +1225,13 @@ class WhiskerAutoPetIdCard extends HTMLElement {
                 <td><span class="status-pill ${escapeHtml(actionCls)}">${escapeHtml(resultLabel)}</span></td>
               </tr>
             `;
+            const detailRow = isExpanded
+              ? `<tr class="detail-row"><td colspan="5">${this._renderDecisionDetailsHtml(
+                  d,
+                  attrs.clean_baselines || {}
+                )}</td></tr>`
+              : "";
+            return mainRow + detailRow;
           })
           .join("")
       : `<tr><td colspan="5" class="empty">No recent Smart Cat ID activity recorded yet.</td></tr>`;
@@ -1147,6 +1287,19 @@ class WhiskerAutoPetIdCard extends HTMLElement {
       </ha-card>
     `;
 
+    this.shadowRoot.querySelectorAll("tr.decision-row").forEach((row) => {
+      const key = row.getAttribute("data-decision-key") || "";
+      row.addEventListener("click", () => {
+        this._toggleRow(key);
+      });
+      row.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          this._toggleRow(key);
+        }
+      });
+    });
+
     this.shadowRoot.querySelectorAll("button.pager-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
         const dir = btn.getAttribute("data-page");
@@ -1186,7 +1339,7 @@ if (!window.customCards.some((card) => card.type === "whisker-auto-pet-id-card")
     type: "whisker-auto-pet-id-card",
     name: "Whisker Smart Cat ID",
     description:
-      "Displays Smart Cat ID status, clean weight baselines with cat avatars, and paginated visit corrections.",
+      "Displays Smart Cat ID status, clean weight baselines with cat avatars, and paginated visit corrections with clickable details.",
     preview: true,
     documentationURL:
       "https://gitlab.com/bherville/home-assistant/ha-whisker-pet-id",
