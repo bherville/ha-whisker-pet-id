@@ -81,6 +81,14 @@ def _detect_visit_clusters(
     return clusters
 
 
+def _effective_flags(visit: dict[str, Any]) -> list[str]:
+    """Return visit flags while suppressing stale weight_mismatch after reassignment."""
+    raw = list(visit.get("flags") or [])
+    if visit.get("is_reassigned") is True:
+        return [flag for flag in raw if flag != "weight_mismatch"]
+    return raw
+
+
 def build_health_context(
     visits: list[dict[str, Any]],
     pets: list[dict[str, Any]],
@@ -140,7 +148,7 @@ def build_health_context(
         window_visits.append(visit)
 
         assigned = [str(p) for p in (visit.get("assigned_pets") or []) if p]
-        flags = list(visit.get("flags") or [])
+        flags = _effective_flags(visit)
         closest = visit.get("closest_pets_by_weight") or []
 
         if not assigned:
@@ -220,7 +228,7 @@ def build_health_context(
             if ww_raw is None or (isinstance(ww_raw, (int, float)) and float(ww_raw) <= 1.0):
                 zero_waste_count += 1
 
-            if "weight_mismatch" in (v.get("flags") or []):
+            if "weight_mismatch" in _effective_flags(v):
                 weight_mismatch_count += 1
 
         clusters = _detect_visit_clusters(
@@ -260,7 +268,7 @@ def build_health_context(
             "clusters": clusters,
         }
 
-    flagged_window = [v for v in window_visits if v.get("flags")]
+    flagged_window = [v for v in window_visits if _effective_flags(v)]
     notable_events = [
         {
             "local_time": v.get("local_time") or v.get("timestamp"),
@@ -269,7 +277,7 @@ def build_health_context(
             "duration_seconds": v.get("duration_seconds"),
             "waste_type": v.get("waste_type"),
             "waste_weight": v.get("waste_weight"),
-            "flags": v.get("flags") or [],
+            "flags": _effective_flags(v),
             "closest_pet": (
                 v["closest_pets_by_weight"][0].get("name")
                 if v.get("closest_pets_by_weight")

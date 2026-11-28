@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.3 - 2026-11-27
+
+- **Suppress Stale Mismatches on Reassigned Visits:** Updated `build_health_context` in `health.py` to ignore `weight_mismatch` flags on visits where `is_reassigned: true`, while keeping all visit/weight/cluster telemetry intact and preserving full mismatch detection for all un-reassigned visits.
+
 ## 0.5.2 - 2026-11-27
 
 - **Clean Baselines in Health Summaries:** Wired `compute_clean_baselines` (`baseline_overrides`) into `WhiskerHealthCoordinator.async_run_health_summary` and `build_health_context`, and excluded `scale_anomaly` glitches from `suspected_redirected_visits`, eliminating false `Watch` alerts after Smart Cat ID has already resolved misattributions.

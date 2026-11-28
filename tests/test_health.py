@@ -291,6 +291,60 @@ class TestCleanBaselinesAndScaleAnomalyFiltering(unittest.TestCase):
         self.assertEqual(ctx["pets"]["Ember"]["suspected_redirected_visits"], 0)
         self.assertEqual(ctx["pets"]["Jane"]["weight_mismatch_count"], 0)
 
+    def test_reassigned_visits_suppress_weight_mismatch_while_keeping_unreviewed_flags(
+        self,
+    ) -> None:
+        now = datetime(2026, 11, 27, 19, 0, tzinfo=timezone.utc)
+        pets = [
+            {"pet_id": "p-ember", "name": "Ember", "estimated_weight_lbs": 9.58},
+            {"pet_id": "p-sterling", "name": "Sterling", "estimated_weight_lbs": 9.91},
+        ]
+        visits = [
+            {
+                "type": "PET_VISIT",
+                "timestamp": (now - timedelta(hours=1)).isoformat(),
+                "assigned_pets": ["Ember"],
+                "is_reassigned": True,
+                "weight_lbs": 10.23,
+                "duration_seconds": 80,
+                "waste_type": "urine",
+                "waste_weight": 60.0,
+                "flags": ["weight_mismatch"],
+                "closest_pets_by_weight": [{"name": "Sterling", "abs_delta_lbs": 0.32}],
+            },
+            {
+                "type": "PET_VISIT",
+                "timestamp": (now - timedelta(hours=2)).isoformat(),
+                "assigned_pets": ["Sterling"],
+                "is_reassigned": False,
+                "weight_lbs": 8.20,
+                "duration_seconds": 75,
+                "waste_type": "urine",
+                "waste_weight": 55.0,
+                "flags": ["weight_mismatch"],
+                "closest_pets_by_weight": [{"name": "Ember", "abs_delta_lbs": 1.38}],
+            },
+        ]
+        ctx = health.build_health_context(
+            visits,
+            pets,
+            tz_name="UTC",
+            now=now,
+            baseline_overrides={"Ember": 9.58, "Sterling": 9.91},
+        )
+        # Reassigned visit keeps health metrics but suppresses stale Pet ID alerts
+        self.assertEqual(ctx["pets"]["Ember"]["visits_window"], 1)
+        self.assertEqual(ctx["pets"]["Ember"]["avg_weight_lbs"], 10.23)
+        self.assertEqual(ctx["pets"]["Ember"]["weight_mismatch_count"], 0)
+        self.assertEqual(ctx["pets"]["Sterling"]["suspected_redirected_visits"], 0)
+        self.assertEqual(ctx["recent_visits_sample"][0]["flags"], [])
+
+        # Un-reassigned visit keeps full weight_mismatch detection and flags
+        self.assertEqual(ctx["pets"]["Sterling"]["weight_mismatch_count"], 1)
+        self.assertEqual(ctx["pets"]["Ember"]["suspected_redirected_visits"], 1)
+        self.assertEqual(ctx["flagged_visits_count"], 1)
+        self.assertEqual(ctx["recent_visits_sample"][1]["flags"], ["weight_mismatch"])
+
 
 if __name__ == "__main__":
     unittest.main()
