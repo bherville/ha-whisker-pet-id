@@ -30,6 +30,7 @@ It piggybacks directly on Home Assistant's already-authenticated **Whisker (`lit
 - `sensor.ha_whisker_pet_id_health_summary` — Household health status (`normal` / `watch` / `alert`) with `headline`, `summary_markdown`, `alert_pets`, `generation_mode`, and cluster attributes.
 - `sensor.ha_whisker_pet_id_<pet>_health_summary` — Per-cat health status, rolling counts, duration/weight metrics, and narrative summary.
 - `binary_sensor.ha_whisker_pet_id_health_alert` — Turns `on` (`problem`) when overall health status is `watch`/`alert` or a repeat-visit cluster is detected.
+- `button.ha_whisker_pet_id_fix_pet_id_mismatches` — Pressing triggers Hybrid + Gemini verification & auto-reassignment on recent flagged visits (usable in dashboards, automations, scripts, or voice assistants).
 
 ## Built-in Lovelace Custom Cards
 

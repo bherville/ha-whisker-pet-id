@@ -1,10 +1,11 @@
 /* Built-in Lovelace cards for HA Whisker Pet ID */
 
-const CARD_VERSION = "0.4.3";
+const CARD_VERSION = "0.5.0";
 
 const DEFAULT_HEALTH_ENTITY = "sensor.ha_whisker_pet_id_health_summary";
 const DEFAULT_HISTORY_ENTITY = "sensor.ha_whisker_pet_id_alert_history";
 const DEFAULT_AI_ENTITY = "sensor.ha_whisker_pet_id_ai_pet_id_status";
+const DEFAULT_FIX_BUTTON_ENTITY = "button.ha_whisker_pet_id_fix_pet_id_mismatches";
 
 function escapeHtml(value) {
   if (value === null || value === undefined) return "";
@@ -124,6 +125,36 @@ const SHARED_STYLES = `
     font-size: 0.8rem;
     color: var(--secondary-text-color);
     margin-top: 2px;
+  }
+  .header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(3, 169, 244, 0.35);
+    background: rgba(3, 169, 244, 0.14);
+    color: var(--primary-color, #03a9f4);
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .action-btn:hover:not(:disabled) {
+    background: rgba(3, 169, 244, 0.24);
+    border-color: var(--primary-color, #03a9f4);
+  }
+  .action-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
   }
   .badge {
     display: inline-flex;
@@ -920,11 +951,13 @@ class WhiskerAutoPetIdCard extends HTMLElement {
     this._config = {
       title: "Smart Cat ID",
       entity: DEFAULT_AI_ENTITY,
+      fix_button_entity: DEFAULT_FIX_BUTTON_ENTITY,
       page_size: 5,
       max_rows: 25,
     };
     this._page = 0;
     this._expandedIds = new Set();
+    this._runningFix = false;
     this._lastSig = "";
   }
 
@@ -932,6 +965,7 @@ class WhiskerAutoPetIdCard extends HTMLElement {
     return {
       title: "Smart Cat ID",
       entity: DEFAULT_AI_ENTITY,
+      fix_button_entity: DEFAULT_FIX_BUTTON_ENTITY,
       page_size: 5,
       max_rows: 25,
     };
@@ -950,9 +984,14 @@ class WhiskerAutoPetIdCard extends HTMLElement {
     }
     const maxRows = Math.max(1, Number(config.max_rows || 25));
     const pageSize = Math.max(1, Number(config.page_size || 5));
+    const fixButtonEntity =
+      config.fix_button_entity === false || config.fix_button_entity === ""
+        ? ""
+        : config.fix_button_entity || DEFAULT_FIX_BUTTON_ENTITY;
     this._config = {
       title: config.title || "Smart Cat ID",
       entity: config.entity || DEFAULT_AI_ENTITY,
+      fix_button_entity: fixButtonEntity,
       page_size: pageSize,
       max_rows: maxRows,
     };
@@ -964,7 +1003,10 @@ class WhiskerAutoPetIdCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     const stateObj = hass?.states?.[this._config.entity];
-    const sig = `${stateObj?.last_updated || ""}|${stateObj?.state || ""}`;
+    const btnObj = this._config.fix_button_entity
+      ? hass?.states?.[this._config.fix_button_entity]
+      : null;
+    const sig = `${stateObj?.last_updated || ""}|${stateObj?.state || ""}|${btnObj?.last_updated || ""}|${btnObj?.state || ""}`;
     if (sig !== this._lastSig) {
       this._lastSig = sig;
       this._render();
@@ -973,6 +1015,20 @@ class WhiskerAutoPetIdCard extends HTMLElement {
 
   getCardSize() {
     return 5;
+  }
+
+  async _triggerFixMismatches() {
+    if (!this._hass || !this._config.fix_button_entity || this._runningFix) return;
+    this._runningFix = true;
+    this._render();
+    try {
+      await this._hass.callService("button", "press", {
+        entity_id: this._config.fix_button_entity,
+      });
+    } finally {
+      this._runningFix = false;
+      this._render();
+    }
   }
 
   _modeBadgeClass(mode) {
@@ -1241,6 +1297,15 @@ class WhiskerAutoPetIdCard extends HTMLElement {
       : "";
 
     const pagerHtml = renderPagerHtml(decisions.length, this._page, pageSize);
+    const hasFixBtn = Boolean(
+      this._config.fix_button_entity &&
+        this._hass?.states?.[this._config.fix_button_entity]
+    );
+    const fixBtnHtml = hasFixBtn
+      ? `<button class="action-btn" data-action="fix-pet-ids" type="button" ${
+          this._runningFix ? "disabled" : ""
+        }>${this._runningFix ? "Checking…" : "Fix Mismatches"}</button>`
+      : "";
 
     this.shadowRoot.innerHTML = `
       <style>${SHARED_STYLES}</style>
@@ -1250,7 +1315,10 @@ class WhiskerAutoPetIdCard extends HTMLElement {
             <h2 class="title">${escapeHtml(this._config.title)}</h2>
             <div class="subtitle">Last check: ${escapeHtml(formatTimestamp(attrs.last_run_at))}</div>
           </div>
-          <span class="badge ${escapeHtml(badgeCls)}">${escapeHtml(badgeLabel)}</span>
+          <div class="header-actions">
+            ${fixBtnHtml}
+            <span class="badge ${escapeHtml(badgeCls)}">${escapeHtml(badgeLabel)}</span>
+          </div>
         </div>
 
         ${errorBanner}
@@ -1286,6 +1354,13 @@ class WhiskerAutoPetIdCard extends HTMLElement {
         ${pagerHtml}
       </ha-card>
     `;
+
+    const fixBtn = this.shadowRoot.querySelector('button[data-action="fix-pet-ids"]');
+    if (fixBtn) {
+      fixBtn.addEventListener("click", () => {
+        this._triggerFixMismatches();
+      });
+    }
 
     this.shadowRoot.querySelectorAll("tr.decision-row").forEach((row) => {
       const key = row.getAttribute("data-decision-key") || "";

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0 - 2026-11-27
+
+- **On-Demand Fix Pet ID Mismatches Button (`button.ha_whisker_pet_id_fix_pet_id_mismatches`):** Added a native Home Assistant `button` entity under the integration service device so dashboards, automations, scripts, and Assist can trigger Hybrid + Gemini verification & auto-reassignment on recent flagged, un-reassigned visits on demand.
+- **Smart Cat ID Quick Action:** Added a **Fix Mismatches** button directly in the header of `custom:whisker-auto-pet-id-card` (configurable or hideable via `fix_button_entity`).
+
 ## 0.4.3 - 2026-11-27
 
 - **Expandable Smart Cat ID Rows:** Made every visit row in **Smart Cat ID** (`custom:whisker-auto-pet-id-card`) clickable (and keyboard-accessible) to expand an inline detail drawer showing original vs. verified cat, measured weight vs. baseline difference, method, confidence score, visual match, timestamps, event ID, and full AI/fast-path reasoning.

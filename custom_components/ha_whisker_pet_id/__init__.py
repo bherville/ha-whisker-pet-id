@@ -65,7 +65,7 @@ from .frontend import async_register_frontend_cards
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[str] = ["sensor", "binary_sensor"]
+PLATFORMS: list[str] = ["sensor", "binary_sensor", "button"]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 GET_PETS_SCHEMA = vol.Schema(

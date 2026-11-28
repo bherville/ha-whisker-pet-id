@@ -63,6 +63,11 @@
       "health_alert": {
         "name": "Health alert"
       }
+    },
+    "button": {
+      "fix_pet_id_mismatches": {
+        "name": "Fix Pet ID mismatches"
+      }
     }
   },
   "services": {

@@ -685,6 +685,7 @@ class WhiskerPetIdCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         video_escalation: str | None = None,
         robot_id: str | None = None,
         force: bool = False,
+        retry_unreassigned: bool = False,
     ) -> dict[str, Any]:
         """Evaluate flagged visits via Hybrid Fast-Path and Gemini Vision with safety gates."""
         async with self._verify_lock:
@@ -783,7 +784,11 @@ class WhiskerPetIdCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         continue
                     if visit.get("is_reassigned") is True and not force:
                         continue
-                    if eid in self._processed_set and not force:
+                    if (
+                        eid in self._processed_set
+                        and not force
+                        and not retry_unreassigned
+                    ):
                         continue
                     if trigger != "service":
                         vdt = parse_timestamp(visit.get("timestamp"))

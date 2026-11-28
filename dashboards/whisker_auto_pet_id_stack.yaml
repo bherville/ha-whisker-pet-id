@@ -16,6 +16,8 @@ cards:
         name: Smart Cat ID Mode
       - entity: sensor.ha_whisker_pet_id_flagged_visits
         name: Flagged Visits
+      - entity: button.ha_whisker_pet_id_fix_pet_id_mismatches
+        name: Fix Pet ID Mismatches
   - type: logbook
     title: Recent Smart Cat ID Activity
     hours_to_show: 72
