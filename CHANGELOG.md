@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0 - 2026-11-28
+
+- **Camera Freeze-Frame Troubleshooting Snapshots:** Added `async_save_visit_snapshots` to capture timestamp-matched Litter-Robot 5 Pro visit thumbnails and an optional Home Assistant room camera snapshot (`snapshot_camera_entity`, configurable in integration options and `configure_health`), automatically pruned to the newest 60 JPEGs under `/local/ha_whisker_pet_id/snapshots/`.
+- **Inline Snapshot Galleries:** Smart Cat ID decisions (`pet_id_review`), repeat-visit clusters (`health_cluster`), and health check summaries store captured freeze-frame URLs and render clickable inline camera galleries (with a `📷` indicator on rows) inside both `custom:whisker-health-archive-card` and `custom:whisker-auto-pet-id-card`.
+
 ## 0.5.4 - 2026-11-27
 
 - **Open Health Archive on Active Alerts by Default:** Updated `custom:whisker-health-archive-card` to default to the `Active` filter (overridable via `default_filter: all`), placed `Active` first in the filter bar so resolved history stays neatly tucked behind `All`, and shows a friendly all-clear message when no active alerts remain.

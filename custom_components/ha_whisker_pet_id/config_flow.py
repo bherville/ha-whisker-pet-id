@@ -31,6 +31,7 @@ from .const import (
     CONF_ENABLE_PUSH_ALERTS,
     CONF_HEALTH_WINDOW_HOURS,
     CONF_NOTIFY_SERVICE,
+    CONF_SNAPSHOT_CAMERA_ENTITY,
     CONF_SUMMARY_HOUR,
     CONF_SUMMARY_MINUTE,
     CONF_VIDEO_ESCALATION,
@@ -49,6 +50,7 @@ from .const import (
     DEFAULT_ENABLE_PUSH_ALERTS,
     DEFAULT_HEALTH_WINDOW_HOURS,
     DEFAULT_NOTIFY_SERVICE,
+    DEFAULT_SNAPSHOT_CAMERA_ENTITY,
     DEFAULT_SUMMARY_HOUR,
     DEFAULT_SUMMARY_MINUTE,
     DEFAULT_VIDEO_ESCALATION,
@@ -144,6 +146,12 @@ class WhiskerPetIdOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_NOTIFY_SERVICE,
                     default=opts.get(CONF_NOTIFY_SERVICE, DEFAULT_NOTIFY_SERVICE),
+                ): selector.TextSelector(),
+                vol.Optional(
+                    CONF_SNAPSHOT_CAMERA_ENTITY,
+                    default=opts.get(
+                        CONF_SNAPSHOT_CAMERA_ENTITY, DEFAULT_SNAPSHOT_CAMERA_ENTITY
+                    ),
                 ): selector.TextSelector(),
                 vol.Optional(
                     CONF_AUTO_PET_ID_MODE,

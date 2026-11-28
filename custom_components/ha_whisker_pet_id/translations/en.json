@@ -21,6 +21,7 @@
         "data": {
           "ai_task_entity": "AI Task entity (Gemini)",
           "notify_service": "Notify service target (comma-separated, e.g. notify.family)",
+          "snapshot_camera_entity": "Troubleshooting snapshot camera entity (optional room camera)",
           "auto_pet_id_mode": "Auto Pet ID verification mode (off, dry_run, auto_reassign)",
           "enable_hybrid_fast_path": "Enable 0-token hybrid weight fast-path for unambiguous cats",
           "video_escalation": "Gemini clip inspection mode (thumbnail_only or thumbnail_then_video)",
@@ -260,6 +261,10 @@
         "auto_pet_id_clip_delay_seconds": {
           "name": "Clip Upload Delay (Seconds)",
           "description": "Seconds to wait after a visit before checking clips so LR5 Pro upload completes."
+        },
+        "snapshot_camera_entity": {
+          "name": "Troubleshooting Snapshot Camera",
+          "description": "Optional Home Assistant camera entity to capture an extra room freeze-frame alongside LR5 Pro thumbnails (leave empty to disable)."
         }
       }
     },

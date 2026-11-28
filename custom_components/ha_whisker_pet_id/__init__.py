@@ -45,6 +45,7 @@ from .const import (
     CONF_ENABLE_PUSH_ALERTS,
     CONF_HEALTH_WINDOW_HOURS,
     CONF_NOTIFY_SERVICE,
+    CONF_SNAPSHOT_CAMERA_ENTITY,
     CONF_SUMMARY_HOUR,
     CONF_SUMMARY_MINUTE,
     CONF_VIDEO_ESCALATION,
@@ -120,6 +121,7 @@ CONFIGURE_HEALTH_SCHEMA = vol.Schema(
     {
         vol.Optional(CONF_AI_TASK_ENTITY): cv.string,
         vol.Optional(CONF_NOTIFY_SERVICE): cv.string,
+        vol.Optional(CONF_SNAPSHOT_CAMERA_ENTITY): cv.string,
         vol.Optional(CONF_ENABLE_DAILY_SUMMARY): cv.boolean,
         vol.Optional(CONF_SUMMARY_HOUR): vol.All(vol.Coerce(int), vol.Range(min=0, max=23)),
         vol.Optional(CONF_SUMMARY_MINUTE): vol.All(vol.Coerce(int), vol.Range(min=0, max=59)),

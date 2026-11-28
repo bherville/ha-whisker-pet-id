@@ -46,6 +46,7 @@ from .const import (
     CONF_ENABLE_PUSH_ALERTS,
     CONF_HEALTH_WINDOW_HOURS,
     CONF_NOTIFY_SERVICE,
+    CONF_SNAPSHOT_CAMERA_ENTITY,
     CONF_SUMMARY_HOUR,
     CONF_SUMMARY_MINUTE,
     CONF_VIDEO_ESCALATION,
@@ -66,11 +67,13 @@ from .const import (
     DEFAULT_MIN_VALID_WEIGHT_LBS,
     DEFAULT_NOTIFY_SERVICE,
     DEFAULT_SCAN_INTERVAL_MINUTES,
+    DEFAULT_SNAPSHOT_CAMERA_ENTITY,
     DEFAULT_SUMMARY_HOUR,
     DEFAULT_SUMMARY_MINUTE,
     DEFAULT_VIDEO_ESCALATION,
     DOMAIN,
     LITTERROBOT_DOMAIN,
+    SNAPSHOT_LIVE_CAMERA_MAX_AGE_SECONDS,
 )
 from .health import (
     async_generate_ai_health_summary,
@@ -82,6 +85,7 @@ from .media_source import cleanup_stale_visit_media, get_media_root
 from .vision_id import (
     GeminiRateLimitError,
     async_prepare_reference_attachments,
+    async_save_visit_snapshots,
     async_sync_pet_avatars,
     async_verify_visit_with_gemini,
     compute_clean_baselines,
@@ -241,6 +245,82 @@ class WhiskerHealthCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     pstats["avatar_url"] = self._pet_avatars[pname]
         except Exception as err:
             _LOGGER.debug("Skipping pet avatar sync: %s", err)
+
+        missing_review_eids: set[str] = set()
+        if self._alert_history is not None:
+            for entry_item in self._alert_history.query(active_only=True, limit=50).get(
+                "alerts", []
+            ):
+                entry_details = entry_item.get("details") or {}
+                if entry_item.get("source") == "pet_id_review" and not entry_details.get(
+                    "snapshots"
+                ):
+                    rev_eid = str(entry_details.get("event_id") or "").strip()
+                    if rev_eid:
+                        missing_review_eids.add(rev_eid)
+
+        cluster_eids = {
+            str(cl.get("latest_event_id") or "").strip()
+            for cl in (context.get("clusters") or [])
+            if isinstance(cl, dict) and cl.get("latest_event_id")
+        }
+        target_snapshot_eids = cluster_eids | missing_review_eids
+        if target_snapshot_eids:
+            try:
+                _, _, account = get_litterrobot_runtime(self.hass)
+                websession = getattr(getattr(account, "session", None), "websession", None)
+                clips_resp = await async_list_visits(
+                    self.hass,
+                    robot_id=robot_id,
+                    limit=80,
+                    activity_type="PET_VISIT",
+                    include_clips=True,
+                    baseline_overrides=clean_baselines or None,
+                )
+                visit_by_eid = {
+                    str(v.get("event_id") or "").strip(): v
+                    for v in (clips_resp.get("visits") or [])
+                    if v.get("event_id")
+                }
+                snapshot_camera = str(
+                    self.option(
+                        CONF_SNAPSHOT_CAMERA_ENTITY, DEFAULT_SNAPSHOT_CAMERA_ENTITY
+                    )
+                ).strip()
+                now_utc = datetime.now(timezone.utc)
+                event_snapshots: dict[str, list[dict[str, str]]] = {}
+                for target_eid in target_snapshot_eids:
+                    matched_visit = visit_by_eid.get(target_eid)
+                    if not matched_visit:
+                        continue
+                    vdt = parse_timestamp(matched_visit.get("timestamp"))
+                    is_recent = (
+                        vdt is None
+                        or abs((now_utc - vdt).total_seconds())
+                        <= SNAPSHOT_LIVE_CAMERA_MAX_AGE_SECONDS
+                    )
+                    snaps = await async_save_visit_snapshots(
+                        self.hass,
+                        websession,
+                        matched_visit,
+                        camera_entity_id=snapshot_camera,
+                        capture_live_camera=is_recent,
+                    )
+                    if snaps:
+                        event_snapshots[target_eid] = snaps
+
+                for cl in context.get("clusters") or []:
+                    cl_eid = str(cl.get("latest_event_id") or "").strip()
+                    if cl_eid and cl_eid in event_snapshots:
+                        cl["snapshots"] = event_snapshots[cl_eid]
+                        cl["snapshot_url"] = event_snapshots[cl_eid][0]["url"]
+
+                if self._alert_history is not None and event_snapshots:
+                    await self._alert_history.async_attach_snapshots_by_event_id(
+                        event_snapshots
+                    )
+            except Exception as err:
+                _LOGGER.debug("Skipping health snapshot capture: %s", err)
 
         if use_ai:
             summary = await async_generate_ai_health_summary(
@@ -950,6 +1030,25 @@ class WhiskerPetIdCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         self._stats.get("uncertain_count", 0)
                     ) + 1
 
+                snapshot_camera = str(
+                    self.option(
+                        CONF_SNAPSHOT_CAMERA_ENTITY, DEFAULT_SNAPSHOT_CAMERA_ENTITY
+                    )
+                ).strip()
+                vdt_rec = parse_timestamp(visit.get("timestamp"))
+                is_recent_rec = (
+                    vdt_rec is None
+                    or abs((now_utc - vdt_rec).total_seconds())
+                    <= SNAPSHOT_LIVE_CAMERA_MAX_AGE_SECONDS
+                )
+                snapshots = await async_save_visit_snapshots(
+                    self.hass,
+                    websession,
+                    visit,
+                    camera_entity_id=snapshot_camera,
+                    capture_live_camera=is_recent_rec,
+                )
+
                 record = {
                     "processed_at": datetime.now(timezone.utc).isoformat(),
                     "event_id": eid,
@@ -963,6 +1062,8 @@ class WhiskerPetIdCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "visual_match": raw_decision.get("visual_match"),
                     "action": action,
                     "reasoning": gated["reason"],
+                    "snapshots": snapshots,
+                    "snapshot_url": snapshots[0]["url"] if snapshots else None,
                 }
                 decisions.append(record)
                 self._record_decision(record)

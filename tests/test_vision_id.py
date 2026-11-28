@@ -467,5 +467,87 @@ class TestAsyncGeminiVisionFlow(unittest.IsolatedAsyncioTestCase):
                 vision_id._crop_square_avatar_sync = orig_crop
 
 
+class TestVisitSnapshotCapture(unittest.IsolatedAsyncioTestCase):
+    """Verify dual-camera freeze-frame capture and bounded pruning."""
+
+    async def test_save_dual_camera_snapshots_and_prune(self) -> None:
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+
+            async def fake_exec(func, *args):
+                return func(*args)
+
+            cam_state = SimpleNamespace(attributes={"friendly_name": "REOLINK E1 Pro"})
+            hass = SimpleNamespace(
+                config=SimpleNamespace(path=lambda *parts: str(root.joinpath(*parts))),
+                async_add_executor_job=fake_exec,
+                states=SimpleNamespace(get=lambda eid: cam_state if eid == "camera.reolink" else None),
+            )
+
+            cam_mod = types.ModuleType("homeassistant.components.camera")
+            cam_mod.async_get_image = AsyncMock(
+                return_value=SimpleNamespace(content=b"reolink-jpeg-bytes")
+            )
+
+            async def fake_download(h, session, url, dest, max_bytes=None):
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(b"lr5-jpeg-bytes")
+                return dest
+
+            visit = {
+                "event_id": "evt-snap-1",
+                "matched_clips": [{"clip_id": "c1", "thumbnail_url": "https://cdn.example/c1.jpg"}],
+            }
+
+            with patch.object(vision_id, "async_download_media_file", side_effect=fake_download), patch.dict(
+                sys.modules, {"homeassistant.components.camera": cam_mod}
+            ):
+                snaps = await vision_id.async_save_visit_snapshots(
+                    hass,
+                    MagicMock(),
+                    visit,
+                    camera_entity_id="camera.reolink",
+                    capture_live_camera=True,
+                )
+                self.assertEqual(
+                    snaps,
+                    [
+                        {
+                            "label": "Litter-Robot 5 Pro",
+                            "url": "/local/ha_whisker_pet_id/snapshots/visit_evt-snap-1_lr5.jpg",
+                        },
+                        {
+                            "label": "REOLINK E1 Pro",
+                            "url": "/local/ha_whisker_pet_id/snapshots/visit_evt-snap-1_cam.jpg",
+                        },
+                    ],
+                )
+                self.assertTrue((root / "www/ha_whisker_pet_id/snapshots/visit_evt-snap-1_lr5.jpg").is_file())
+                self.assertTrue((root / "www/ha_whisker_pet_id/snapshots/visit_evt-snap-1_cam.jpg").is_file())
+
+                # Older visit with capture_live_camera=False saves LR5 Pro only
+                visit_old = {
+                    "event_id": "evt-snap-old",
+                    "matched_clips": [{"clip_id": "c2", "thumbnail_url": "https://cdn.example/c2.jpg"}],
+                }
+                snaps_old = await vision_id.async_save_visit_snapshots(
+                    hass,
+                    MagicMock(),
+                    visit_old,
+                    camera_entity_id="camera.reolink",
+                    capture_live_camera=False,
+                )
+                self.assertEqual(len(snaps_old), 1)
+                self.assertEqual(snaps_old[0]["label"], "Litter-Robot 5 Pro")
+
+            # Verify bounded pruning retains only newest max_files
+            snap_dir = root / "www/ha_whisker_pet_id/snapshots"
+            removed = vision_id._prune_snapshots_sync(snap_dir, max_files=2)
+            self.assertEqual(removed, 1)
+            self.assertEqual(len(list(snap_dir.glob("*.jpg"))), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

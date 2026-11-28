@@ -341,6 +341,14 @@ configure_health:
           min: 30
           max: 300
           mode: box
+    snapshot_camera_entity:
+      name: Troubleshooting Snapshot Camera
+      description: Optional Home Assistant camera entity to capture an extra room freeze-frame alongside LR5 Pro thumbnails (leave empty to disable).
+      required: false
+      example: "camera.reolink_e1_pro_high_resolution_channel"
+      selector:
+        entity:
+          domain: camera
 
 verify_visits_with_ai:
   name: Verify Flagged Visits with Gemini Vision

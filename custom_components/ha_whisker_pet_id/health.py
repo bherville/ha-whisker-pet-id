@@ -37,7 +37,7 @@ def _clean_status(value: Any, default: str = "normal") -> str:
 
 
 def _detect_visit_clusters(
-    timestamps: list[tuple[datetime, float | None, str | None]],
+    timestamps: list[tuple[Any, ...]],
     *,
     window_minutes: int,
     min_visits: int,
@@ -51,7 +51,8 @@ def _detect_visit_clusters(
     clusters: list[dict[str, Any]] = []
 
     left = 0
-    for right, (right_dt, _, _) in enumerate(ordered):
+    for right, item in enumerate(ordered):
+        right_dt = item[0]
         while right_dt - ordered[left][0] > window:
             left += 1
         span_count = right - left + 1
@@ -60,9 +61,16 @@ def _detect_visit_clusters(
             start_iso = slice_items[0][0].isoformat()
             end_iso = slice_items[-1][0].isoformat()
             zero_waste = sum(
-                1 for _, ww, _ in slice_items if ww is None or ww <= 1.0
+                1
+                for entry_tuple in slice_items
+                if entry_tuple[1] is None or entry_tuple[1] <= 1.0
             )
-            entry = {
+            latest_event_id = (
+                slice_items[-1][3]
+                if len(slice_items[-1]) >= 4 and slice_items[-1][3]
+                else None
+            )
+            entry: dict[str, Any] = {
                 "start": start_iso,
                 "end": end_iso,
                 "count": span_count,
@@ -72,6 +80,8 @@ def _detect_visit_clusters(
                     1,
                 ),
             }
+            if latest_event_id:
+                entry["latest_event_id"] = str(latest_event_id)
             if clusters and slice_items[0][0] <= parse_timestamp(clusters[-1]["end"]):
                 if span_count >= clusters[-1]["count"]:
                     clusters[-1] = entry
@@ -202,7 +212,7 @@ def build_health_context(
         feces_count = 0
         zero_waste_count = 0
         weight_mismatch_count = 0
-        cluster_inputs: list[tuple[datetime, float | None, str | None]] = []
+        cluster_inputs: list[tuple[Any, ...]] = []
 
         for v in items:
             dt_utc = parse_timestamp(v.get("timestamp") or v.get("local_time"))
@@ -215,6 +225,7 @@ def build_health_context(
                         dt_utc.astimezone(tz_info),
                         float(ww) if isinstance(ww, (int, float)) else None,
                         v.get("waste_type"),
+                        v.get("event_id"),
                     )
                 )
 

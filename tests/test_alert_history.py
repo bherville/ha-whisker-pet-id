@@ -302,6 +302,29 @@ class TestAlertHistoryManager(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(jane["status"], "resolved")
 
+    async def test_attach_snapshots_to_pet_id_review(self) -> None:
+        hass, _ = self._make_hass()
+        mgr = alert_history.AlertHistoryManager(hass, max_entries=20)
+        now = datetime(2026, 11, 28, 12, 0, tzinfo=timezone.utc)
+        snaps = [{"label": "Litter-Robot 5 Pro", "url": "/local/ha_whisker_pet_id/snapshots/visit_evt_1_lr5.jpg"}]
+
+        await mgr.async_record_pet_id_review(
+            {
+                "processed_at": now.isoformat(),
+                "event_id": "evt-1",
+                "weight_lbs": 4.08,
+                "from_pet": None,
+                "to_pet": None,
+                "reasoning": "Unclear clip",
+            },
+            now=now,
+        )
+        updated = await mgr.async_attach_snapshots_by_event_id({"evt-1": snaps})
+        self.assertEqual(updated, 1)
+        alert = mgr.get_sensor_payload()["recent_alerts"][0]
+        self.assertEqual(alert["details"]["snapshots"], snaps)
+        self.assertEqual(alert["details"]["snapshot_url"], snaps[0]["url"])
+
 
 if __name__ == "__main__":
     unittest.main()

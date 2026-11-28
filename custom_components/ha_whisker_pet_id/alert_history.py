@@ -146,6 +146,7 @@ class AlertHistoryManager:
             else:
                 headline = f"{count} quick visits in {dur_str} min"
 
+            cluster_details = dict(cluster)
             existing = self._find_entry(alert_id)
             if existing is None:
                 entry = {
@@ -159,13 +160,22 @@ class AlertHistoryManager:
                     "pets": [pet_name],
                     "headline": headline,
                     "notified_services": list(notified),
-                    "details": dict(cluster),
+                    "details": cluster_details,
                 }
                 self._entries.insert(0, entry)
                 self._fire_alert_event("opened", entry)
                 changed = True
                 opened += 1
             else:
+                prev_details = (
+                    existing.get("details")
+                    if isinstance(existing.get("details"), dict)
+                    else {}
+                )
+                if not cluster_details.get("snapshots") and prev_details.get("snapshots"):
+                    cluster_details["snapshots"] = list(prev_details["snapshots"])
+                if not cluster_details.get("snapshot_url") and prev_details.get("snapshot_url"):
+                    cluster_details["snapshot_url"] = prev_details["snapshot_url"]
                 if existing.get("status") != "active":
                     existing["status"] = "active"
                     existing["resolved_at"] = None
@@ -180,7 +190,7 @@ class AlertHistoryManager:
                 if existing.get("last_seen_at") != now_iso:
                     existing["last_seen_at"] = now_iso
                 existing["headline"] = headline
-                existing["details"] = dict(cluster)
+                existing["details"] = cluster_details
 
         for item in self._entries:
             if (
@@ -238,17 +248,31 @@ class AlertHistoryManager:
                 for pet_name in fallback_pets:
                     flagged_pets_map[pet_name] = (overall, fallback_msg)
 
+            latest_snap_by_pet: dict[str, list[dict[str, str]]] = {}
+            for cluster in reversed(report.get("clusters") or []):
+                if not isinstance(cluster, dict):
+                    continue
+                cp_name = str(cluster.get("pet_name") or "").strip()
+                cp_snaps = cluster.get("snapshots")
+                if cp_name and isinstance(cp_snaps, list) and cp_snaps:
+                    latest_snap_by_pet[cp_name] = [
+                        dict(s) for s in cp_snaps if isinstance(s, dict) and s.get("url")
+                    ]
+
             active_pet_health_ids: set[str] = set()
             for pet_name, (pet_status, pet_headline) in flagged_pets_map.items():
                 alert_id = f"pet_health:{pet_name}"
                 active_pet_health_ids.add(alert_id)
-                details = {
+                details: dict[str, Any] = {
                     "generation_mode": report.get("generation_mode"),
                     "clusters_detected": report.get("clusters_detected", 0),
                     "flagged_visits_count": report.get("flagged_visits_count", 0),
                     "pet_status": pet_status,
                     "household_headline": report.get("headline"),
                 }
+                if pet_name in latest_snap_by_pet:
+                    details["snapshots"] = latest_snap_by_pet[pet_name]
+                    details["snapshot_url"] = latest_snap_by_pet[pet_name][0]["url"]
                 existing = self._find_entry(alert_id)
                 if existing is None:
                     entry = {
@@ -367,6 +391,8 @@ class AlertHistoryManager:
                     "confidence_score": decision.get("confidence_score"),
                     "visual_match": decision.get("visual_match"),
                     "reasoning": decision.get("reasoning"),
+                    "snapshots": list(decision.get("snapshots") or []),
+                    "snapshot_url": decision.get("snapshot_url"),
                 },
             }
             self._entries.insert(0, entry)
@@ -375,6 +401,12 @@ class AlertHistoryManager:
             return entry
 
         changed = False
+        new_snaps = decision.get("snapshots") or []
+        existing_details = existing.setdefault("details", {})
+        if new_snaps and new_snaps != existing_details.get("snapshots"):
+            existing_details["snapshots"] = list(new_snaps)
+            existing_details["snapshot_url"] = decision.get("snapshot_url") or new_snaps[0].get("url")
+            changed = True
         if existing.get("status") != "active":
             existing["status"] = "active"
             existing["resolved_at"] = None
@@ -392,6 +424,30 @@ class AlertHistoryManager:
         if changed:
             await self.async_save()
         return existing
+
+    async def async_attach_snapshots_by_event_id(
+        self, event_snapshots: dict[str, list[dict[str, str]]]
+    ) -> int:
+        """Attach captured freeze-frame URLs onto existing review/cluster alerts."""
+        if not event_snapshots:
+            return 0
+        updated = 0
+        for item in self._entries:
+            details = item.get("details")
+            if not isinstance(details, dict):
+                continue
+            eid = str(details.get("event_id") or details.get("latest_event_id") or "").strip()
+            if not eid or eid not in event_snapshots:
+                continue
+            snaps = event_snapshots[eid]
+            if not snaps or details.get("snapshots") == snaps:
+                continue
+            details["snapshots"] = list(snaps)
+            details["snapshot_url"] = snaps[0].get("url")
+            updated += 1
+        if updated:
+            await self.async_save()
+        return updated
 
     async def async_resolve_pet_id_review(
         self,

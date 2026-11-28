@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "ha_whisker_pet_id"
-INTEGRATION_VERSION = "0.5.4"
+INTEGRATION_VERSION = "0.6.0"
 FRONTEND_SCRIPT_URL = f"/{DOMAIN}/cards.js"
 LITTERROBOT_DOMAIN = "litterrobot"
 
@@ -18,6 +18,7 @@ DEFAULT_MAX_CLIP_DELTA_SECONDS = 360
 
 CONF_AI_TASK_ENTITY = "ai_task_entity"
 CONF_NOTIFY_SERVICE = "notify_service"
+CONF_SNAPSHOT_CAMERA_ENTITY = "snapshot_camera_entity"
 CONF_ENABLE_DAILY_SUMMARY = "enable_daily_summary"
 CONF_SUMMARY_HOUR = "summary_hour"
 CONF_SUMMARY_MINUTE = "summary_minute"
@@ -38,6 +39,7 @@ CONF_AUTO_PET_ID_CLIP_DELAY_SECONDS = "auto_pet_id_clip_delay_seconds"
 
 DEFAULT_AI_TASK_ENTITY = "ai_task.google_ai_task"
 DEFAULT_NOTIFY_SERVICE = ""
+DEFAULT_SNAPSHOT_CAMERA_ENTITY = ""
 DEFAULT_ENABLE_DAILY_SUMMARY = True
 DEFAULT_SUMMARY_HOUR = 8
 DEFAULT_SUMMARY_MINUTE = 0
@@ -73,6 +75,10 @@ FAST_PATH_MIN_ASSIGNED_DELTA_LBS = 1.50
 MEDIA_STORAGE_DIRNAME = "ha_whisker_pet_id_media"
 AVATAR_WWW_SUBDIR = "ha_whisker_pet_id/pets"
 AVATAR_LOCAL_URL_PREFIX = "/local/ha_whisker_pet_id/pets"
+SNAPSHOT_WWW_SUBDIR = "ha_whisker_pet_id/snapshots"
+SNAPSHOT_LOCAL_URL_PREFIX = "/local/ha_whisker_pet_id/snapshots"
+SNAPSHOT_MAX_FILES = 60
+SNAPSHOT_LIVE_CAMERA_MAX_AGE_SECONDS = 900
 AUTO_ID_STORE_KEY = f"{DOMAIN}.auto_id_state"
 AUTO_ID_STORE_VERSION = 1
 

@@ -1,6 +1,6 @@
 /* Built-in Lovelace cards for HA Whisker Pet ID */
 
-const CARD_VERSION = "0.5.4";
+const CARD_VERSION = "0.6.0";
 
 const DEFAULT_HEALTH_ENTITY = "sensor.ha_whisker_pet_id_health_summary";
 const DEFAULT_HISTORY_ENTITY = "sensor.ha_whisker_pet_id_alert_history";
@@ -89,6 +89,38 @@ function renderPagerHtml(totalItems, page, pageSize) {
           Next
         </button>
       </div>
+    </div>
+  `;
+}
+
+function renderSnapshotsHtml(snapshots, fallbackUrl) {
+  const list = Array.isArray(snapshots)
+    ? snapshots.filter((s) => s && typeof s.url === "string" && s.url.trim())
+    : [];
+  if (!list.length && typeof fallbackUrl === "string" && fallbackUrl.trim()) {
+    list.push({ label: "Freeze-Frame", url: fallbackUrl.trim() });
+  }
+  const safeList = list.filter((s) => /^(?:\/|https?:\/\/)/i.test(String(s.url).trim()));
+  if (!safeList.length) return "";
+  const cards = safeList
+    .map((item) => {
+      const url = String(item.url).trim();
+      const label = item.label || "Camera";
+      return `
+        <a class="snapshot-card" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">
+          <img class="snapshot-img" src="${escapeHtml(url)}" alt="${escapeHtml(label)}" loading="lazy" onerror="this.closest('.snapshot-card').style.display='none'" />
+          <div class="snapshot-caption">
+            <span>${escapeHtml(label)}</span>
+            <span>Open ↗</span>
+          </div>
+        </a>
+      `;
+    })
+    .join("");
+  return `
+    <div class="snapshot-section">
+      <div class="detail-label">Camera Freeze-Frames</div>
+      <div class="snapshot-grid">${cards}</div>
     </div>
   `;
 }
@@ -513,6 +545,50 @@ const SHARED_STYLES = `
   .inline-when {
     display: none;
   }
+  .snap-badge {
+    font-size: 0.72rem;
+    opacity: 0.85;
+    margin-left: 4px;
+  }
+  .snapshot-section {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--divider-color, rgba(127, 127, 127, 0.16));
+  }
+  .snapshot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    margin-top: 6px;
+  }
+  .snapshot-card {
+    display: block;
+    border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.24));
+    border-radius: 8px;
+    overflow: hidden;
+    text-decoration: none;
+    background: var(--card-background-color, rgba(0, 0, 0, 0.2));
+    transition: border-color 0.15s ease;
+  }
+  .snapshot-card:hover {
+    border-color: var(--primary-color, #03a9f4);
+  }
+  .snapshot-img {
+    display: block;
+    width: 100%;
+    max-height: 220px;
+    object-fit: cover;
+    background: #000;
+  }
+  .snapshot-caption {
+    padding: 5px 8px;
+    font-size: 0.72rem;
+    color: var(--secondary-text-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+  }
   @container (max-width: 470px) {
     .col-weight,
     .col-when {
@@ -772,7 +848,14 @@ class WhiskerHealthArchiveCard extends HTMLElement {
     }
 
     for (const [key, val] of Object.entries(details)) {
-      if (consumedKeys.has(key) || val === null || val === undefined || val === "") {
+      if (
+        consumedKeys.has(key) ||
+        key === "snapshots" ||
+        key === "snapshot_url" ||
+        val === null ||
+        val === undefined ||
+        val === ""
+      ) {
         continue;
       }
       if (typeof val === "object") continue;
@@ -786,10 +869,12 @@ class WhiskerHealthArchiveCard extends HTMLElement {
     const noteHtml = noteText
       ? `<div class="detail-note">${escapeHtml(noteText)}</div>`
       : "";
+    const snapsHtml = renderSnapshotsHtml(details.snapshots, details.snapshot_url);
 
     return `
       <div class="detail-grid">${fields.join("")}</div>
       ${noteHtml}
+      ${snapsHtml}
     `;
   }
 
@@ -914,6 +999,13 @@ class WhiskerHealthArchiveCard extends HTMLElement {
             const cleanHeadline = this._formatAlertHeadline(item);
             const category = this._formatAlertCategory(item?.source);
             const opened = formatTimestamp(item?.opened_at || item?.last_seen_at);
+            const hasSnaps = Boolean(
+              (Array.isArray(item?.details?.snapshots) && item.details.snapshots.length) ||
+                item?.details?.snapshot_url
+            );
+            const snapIconHtml = hasSnaps
+              ? `<span class="snap-badge" title="Freeze-frame available">📷</span>`
+              : "";
             const alertKey = String(
               item?.alert_id || `${item?.source || "alert"}:${item?.opened_at || ""}:${start + idx}`
             );
@@ -929,7 +1021,7 @@ class WhiskerHealthArchiveCard extends HTMLElement {
                 </td>
                 <td>
                   <div class="alert-main">${escapeHtml(cleanHeadline)}</div>
-                  <div class="alert-meta">${escapeHtml(category)}<span class="inline-when"> · ${escapeHtml(opened)}</span></div>
+                  <div class="alert-meta">${escapeHtml(category)}<span class="inline-when"> · ${escapeHtml(opened)}</span>${snapIconHtml}</div>
                 </td>
                 <td><span class="status-pill ${escapeHtml(pillClass)}">${escapeHtml(pillLabel)}</span></td>
                 <td class="col-when mono">${escapeHtml(opened)}</td>
@@ -1276,10 +1368,12 @@ class WhiskerAutoPetIdCard extends HTMLElement {
     const noteHtml = d?.reasoning
       ? `<div class="detail-note">${escapeHtml(d.reasoning)}</div>`
       : "";
+    const snapsHtml = renderSnapshotsHtml(d?.snapshots, d?.snapshot_url);
 
     return `
       <div class="detail-grid">${fields.join("")}</div>
       ${noteHtml}
+      ${snapsHtml}
     `;
   }
 
@@ -1350,6 +1444,12 @@ class WhiskerAutoPetIdCard extends HTMLElement {
             const method = this._formatStage(d?.stage);
             const resultLabel = this._formatAction(d?.action);
             const conf = d?.confidence ? ` (${titleCaseWords(d.confidence)})` : "";
+            const hasSnaps = Boolean(
+              (Array.isArray(d?.snapshots) && d.snapshots.length) || d?.snapshot_url
+            );
+            const snapIconHtml = hasSnaps
+              ? `<span class="snap-badge" title="Freeze-frame available">📷</span>`
+              : "";
             const actionCls = this._actionClass(d?.action);
             const decisionKey = String(
               d?.event_id ||
@@ -1369,7 +1469,7 @@ class WhiskerAutoPetIdCard extends HTMLElement {
                   <strong>${escapeHtml(route)}</strong>
                   <div class="inline-weight">${escapeHtml(wt)}</div>
                 </td>
-                <td>${escapeHtml(method)}${escapeHtml(conf)}</td>
+                <td>${escapeHtml(method)}${escapeHtml(conf)}${snapIconHtml}</td>
                 <td><span class="status-pill ${escapeHtml(actionCls)}">${escapeHtml(resultLabel)}</span></td>
               </tr>
             `;

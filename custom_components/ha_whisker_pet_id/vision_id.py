@@ -29,6 +29,9 @@ from .const import (
     FAST_PATH_MIN_ASSIGNED_DELTA_LBS,
     FAST_PATH_MIN_MARGIN_LBS,
     FAST_PATH_MIN_SECOND_DELTA_LBS,
+    SNAPSHOT_LOCAL_URL_PREFIX,
+    SNAPSHOT_MAX_FILES,
+    SNAPSHOT_WWW_SUBDIR,
     VIDEO_ESCALATION_MODES,
 )
 from .media_source import build_media_source_uri
@@ -460,6 +463,139 @@ async def async_sync_pet_avatars(
             avatars[name] = f"{AVATAR_LOCAL_URL_PREFIX}/{slug}.jpg"
 
     return avatars
+
+
+def get_snapshot_www_dir(hass: HomeAssistant) -> Path:
+    """Return Home Assistant's static www/ha_whisker_pet_id/snapshots directory."""
+    config = getattr(hass, "config", None)
+    path_fn = getattr(config, "path", None)
+    if callable(path_fn):
+        return Path(path_fn("www", SNAPSHOT_WWW_SUBDIR))
+    return Path("/tmp") / SNAPSHOT_WWW_SUBDIR
+
+
+def _write_bytes_sync(dest_path: Path, payload: bytes) -> None:
+    """Atomically write JPEG bytes to a static file path."""
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = dest_path.with_suffix(".tmp.jpg")
+    tmp_path.write_bytes(payload)
+    tmp_path.replace(dest_path)
+
+
+def _prune_snapshots_sync(snap_dir: Path, max_files: int = SNAPSHOT_MAX_FILES) -> int:
+    """Keep only the newest max_files JPEG snapshots under snap_dir."""
+    if not snap_dir.is_dir():
+        return 0
+    files: list[tuple[float, Path]] = []
+    for path in snap_dir.glob("*.jpg"):
+        if not path.is_file():
+            continue
+        try:
+            files.append((path.stat().st_mtime, path))
+        except OSError:
+            continue
+    files.sort(key=lambda item: item[0], reverse=True)
+    removed = 0
+    for _, stale_path in files[max(1, max_files) :]:
+        try:
+            stale_path.unlink(missing_ok=True)
+            removed += 1
+        except OSError:
+            pass
+    return removed
+
+
+async def async_save_visit_snapshots(
+    hass: HomeAssistant,
+    websession: Any,
+    visit: dict[str, Any],
+    *,
+    camera_entity_id: str = "",
+    capture_live_camera: bool = False,
+) -> list[dict[str, str]]:
+    """Save bounded freeze-frame snapshots (LR5 Pro + optional HA room camera)."""
+    raw_id = str(visit.get("event_id") or visit.get("local_time") or "visit")
+    safe_eid = _safe_slug(raw_id)
+    snap_dir = get_snapshot_www_dir(hass)
+    snapshots: list[dict[str, str]] = []
+    wrote_file = False
+
+    # 1. Litter-Robot 5 Pro visit thumbnail
+    lr5_filename = f"visit_{safe_eid}_lr5.jpg"
+    lr5_path = snap_dir / lr5_filename
+    clip = _extract_primary_clip(visit)
+    thumb_url = clip.get("thumbnail_url") if isinstance(clip, dict) else None
+
+    if lr5_path.is_file() and lr5_path.stat().st_size > 0:
+        snapshots.append(
+            {
+                "label": "Litter-Robot 5 Pro",
+                "url": f"{SNAPSHOT_LOCAL_URL_PREFIX}/{lr5_filename}",
+            }
+        )
+    elif isinstance(thumb_url, str) and thumb_url.strip() and websession is not None:
+        try:
+            await async_download_media_file(
+                hass, websession, thumb_url, lr5_path, max_bytes=_MAX_THUMB_BYTES
+            )
+            if lr5_path.is_file() and lr5_path.stat().st_size > 0:
+                wrote_file = True
+                snapshots.append(
+                    {
+                        "label": "Litter-Robot 5 Pro",
+                        "url": f"{SNAPSHOT_LOCAL_URL_PREFIX}/{lr5_filename}",
+                    }
+                )
+        except Exception as err:
+            _LOGGER.debug("Failed saving LR5 freeze-frame for %s: %s", raw_id, err)
+
+    # 2. Optional Home Assistant room camera snapshot
+    cam_eid = (camera_entity_id or "").strip()
+    if cam_eid:
+        cam_filename = f"visit_{safe_eid}_cam.jpg"
+        cam_path = snap_dir / cam_filename
+        states = getattr(hass, "states", None)
+        cam_state = states.get(cam_eid) if states is not None and hasattr(states, "get") else None
+        cam_label = str(
+            (getattr(cam_state, "attributes", None) or {}).get("friendly_name")
+            or cam_eid
+        )
+        if cam_path.is_file() and cam_path.stat().st_size > 0:
+            snapshots.append(
+                {
+                    "label": cam_label,
+                    "url": f"{SNAPSHOT_LOCAL_URL_PREFIX}/{cam_filename}",
+                }
+            )
+        elif capture_live_camera:
+            try:
+                from homeassistant.components.camera import async_get_image
+
+                img = await async_get_image(hass, cam_eid)
+                content = getattr(img, "content", None)
+                if isinstance(content, (bytes, bytearray)) and len(content) > 0:
+                    await hass.async_add_executor_job(
+                        _write_bytes_sync, cam_path, bytes(content)
+                    )
+                    wrote_file = True
+                    snapshots.append(
+                        {
+                            "label": cam_label,
+                            "url": f"{SNAPSHOT_LOCAL_URL_PREFIX}/{cam_filename}",
+                        }
+                    )
+            except Exception as err:
+                _LOGGER.debug("Failed capturing HA camera snapshot %s: %s", cam_eid, err)
+
+    if wrote_file:
+        try:
+            await hass.async_add_executor_job(
+                _prune_snapshots_sync, snap_dir, SNAPSHOT_MAX_FILES
+            )
+        except Exception as err:
+            _LOGGER.debug("Failed pruning snapshots in %s: %s", snap_dir, err)
+
+    return snapshots
 
 
 def _format_roster_lines(
