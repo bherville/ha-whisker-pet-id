@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "ha_whisker_pet_id"
-INTEGRATION_VERSION = "0.6.0"
+INTEGRATION_VERSION = "0.7.0"
 FRONTEND_SCRIPT_URL = f"/{DOMAIN}/cards.js"
 LITTERROBOT_DOMAIN = "litterrobot"
 
@@ -12,13 +12,18 @@ CAMERA_INVENTORY_API = "https://rrntg65uwf.execute-api.us-east-1.amazonaws.com"
 
 DEFAULT_SCAN_INTERVAL_MINUTES = 15
 DEFAULT_WEIGHT_MISMATCH_LBS = 0.65
-DEFAULT_MAX_VALID_WEIGHT_LBS = 14.0
-DEFAULT_MIN_VALID_WEIGHT_LBS = 4.0
+DEFAULT_MAX_VALID_WEIGHT_LBS = 25.0
+DEFAULT_MIN_VALID_WEIGHT_LBS = 3.0
 DEFAULT_MAX_CLIP_DELTA_SECONDS = 360
 
+CONF_ROBOT = "robot"
 CONF_AI_TASK_ENTITY = "ai_task_entity"
 CONF_NOTIFY_SERVICE = "notify_service"
 CONF_SNAPSHOT_CAMERA_ENTITY = "snapshot_camera_entity"
+CONF_SNAPSHOT_MAX_FILES = "snapshot_max_files"
+CONF_MIN_VALID_WEIGHT_LBS = "min_valid_weight_lbs"
+CONF_MAX_VALID_WEIGHT_LBS = "max_valid_weight_lbs"
+CONF_WEIGHT_MISMATCH_LBS = "weight_mismatch_lbs"
 CONF_ENABLE_DAILY_SUMMARY = "enable_daily_summary"
 CONF_SUMMARY_HOUR = "summary_hour"
 CONF_SUMMARY_MINUTE = "summary_minute"
@@ -37,7 +42,8 @@ CONF_AUTO_PET_ID_NOTIFY = "auto_pet_id_notify"
 CONF_AUTO_PET_ID_MAX_PER_RUN = "auto_pet_id_max_per_run"
 CONF_AUTO_PET_ID_CLIP_DELAY_SECONDS = "auto_pet_id_clip_delay_seconds"
 
-DEFAULT_AI_TASK_ENTITY = "ai_task.google_ai_task"
+DEFAULT_ROBOT = ""
+DEFAULT_AI_TASK_ENTITY = ""
 DEFAULT_NOTIFY_SERVICE = ""
 DEFAULT_SNAPSHOT_CAMERA_ENTITY = ""
 DEFAULT_ENABLE_DAILY_SUMMARY = True

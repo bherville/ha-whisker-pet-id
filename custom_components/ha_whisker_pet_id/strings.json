@@ -3,7 +3,13 @@
     "step": {
       "user": {
         "title": "Set up HA Whisker Pet ID",
-        "description": "Connects to your existing Whisker (litterrobot) integration to expose Litter-Robot 5 Pet ID visits, camera clips, visit reassignment actions, AI health summaries, and Gemini Vision Auto-Pet-ID verification."
+        "description": "Connects to your existing Whisker (litterrobot) integration to expose Litter-Robot 5 Pet ID visits, camera clips, visit reassignment actions, AI health summaries, and AI Vision Auto-Pet-ID verification.",
+        "data": {
+          "robot": "Litter-Robot 5 unit (leave empty if only one unit)",
+          "ai_task_entity": "AI Task entity (optional, any AI provider)",
+          "notify_service": "Notify service target (optional, e.g. notify.mobile_app_phone)",
+          "snapshot_camera_entity": "Troubleshooting snapshot camera (optional room camera)"
+        }
       }
     },
     "error": {
@@ -17,19 +23,24 @@
     "step": {
       "init": {
         "title": "Configure AI Health Summaries & Auto Pet ID",
-        "description": "Select your Home Assistant AI Task entity (e.g. Google AI Task), notification target, Gemini Auto-Pet-ID guardrails, daily schedule, and visit clustering thresholds.",
+        "description": "Configure your Litter-Robot target, Home Assistant AI Task entity, notification target, cat scale weight bounds, snapshot camera, and Auto-Pet-ID guardrails.",
         "data": {
-          "ai_task_entity": "AI Task entity (Gemini)",
-          "notify_service": "Notify service target (comma-separated, e.g. notify.family)",
+          "robot": "Litter-Robot 5 unit (leave empty to auto-select sole unit)",
+          "ai_task_entity": "AI Task entity (any provider)",
+          "notify_service": "Notify service target (comma-separated, e.g. notify.mobile_app_phone)",
           "snapshot_camera_entity": "Troubleshooting snapshot camera entity (optional room camera)",
+          "snapshot_max_files": "Snapshot history limit (max local JPEG files)",
+          "min_valid_weight_lbs": "Minimum valid cat weight (lb)",
+          "max_valid_weight_lbs": "Maximum valid cat weight (lb)",
+          "weight_mismatch_lbs": "Weight mismatch threshold (lb)",
           "auto_pet_id_mode": "Auto Pet ID verification mode (off, dry_run, auto_reassign)",
           "enable_hybrid_fast_path": "Enable 0-token hybrid weight fast-path for unambiguous cats",
-          "video_escalation": "Gemini clip inspection mode (thumbnail_only or thumbnail_then_video)",
+          "video_escalation": "AI clip inspection mode (thumbnail_only or thumbnail_then_video)",
           "auto_pet_id_min_confidence": "Minimum confidence required for auto-reassignment",
-          "auto_unassign_scale_glitches": "Automatically unassign <4.0 lb scale anomalies",
+          "auto_unassign_scale_glitches": "Automatically unassign scale anomalies below min weight",
           "auto_pet_id_notify": "Push notification policy for Auto Pet ID (uncertain_only, all_actions, none)",
           "auto_pet_id_max_per_run": "Max flagged visits evaluated per automatic cycle",
-          "auto_pet_id_clip_delay_seconds": "Seconds to wait for LR5 Pro clip upload before inspecting",
+          "auto_pet_id_clip_delay_seconds": "Seconds to wait for LR5 clip upload before inspecting",
           "enable_daily_summary": "Enable scheduled daily health summary",
           "summary_hour": "Daily summary hour (0-23)",
           "summary_minute": "Daily summary minute (0-59)",
@@ -40,6 +51,9 @@
           "alert_cooldown_hours": "Minimum hours between repeat cluster alerts per cat"
         }
       }
+    },
+    "error": {
+      "invalid_weight_bounds": "Minimum valid cat weight must be strictly less than maximum valid cat weight."
     }
   },
   "entity": {
@@ -88,7 +102,7 @@
       "fields": {
         "robot": {
           "name": "Robot",
-          "description": "Optional Litter-Robot 5 name or serial (defaults to sole LR5 unit)."
+          "description": "Optional Litter-Robot 5 name or serial (defaults to configured or sole LR5 unit)."
         },
         "limit": {
           "name": "Limit",
@@ -108,7 +122,7 @@
         },
         "include_clips": {
           "name": "Include Camera Clips",
-          "description": "Join matching LR5 Pro camera clips by event ID or timestamp proximity."
+          "description": "Join matching LR5 camera clips by event ID or timestamp proximity."
         },
         "max_clip_delta_seconds": {
           "name": "Max Clip Delta Seconds",
@@ -118,7 +132,7 @@
     },
     "get_clip_urls": {
       "name": "Get LR5 Clip URLs",
-      "description": "Exchange a recorded LR5 Pro clip ID for short-lived presigned S3 MP4 chunk URLs and HLS cookies.",
+      "description": "Exchange a recorded LR5 clip ID for short-lived presigned S3 MP4 chunk URLs and HLS cookies.",
       "fields": {
         "clip_id": {
           "name": "Clip ID",
@@ -158,7 +172,7 @@
     },
     "generate_health_summary": {
       "name": "Generate AI Pet Health Summary",
-      "description": "Generate household and per-cat Litter-Robot 5 health summaries using Home Assistant AI Task (Gemini) with automatic deterministic fallback.",
+      "description": "Generate household and per-cat Litter-Robot 5 health summaries using a configured Home Assistant AI Task with automatic deterministic fallback.",
       "fields": {
         "hours": {
           "name": "Lookback Window (Hours)",
@@ -166,11 +180,11 @@
         },
         "ai_task_entity": {
           "name": "AI Task Entity",
-          "description": "Optional ai_task entity ID override (defaults to configured option, e.g. ai_task.google_ai_task)."
+          "description": "Optional ai_task entity ID override (defaults to configured option, e.g. ai_task.my_ai_task)."
         },
         "use_ai": {
-          "name": "Use Gemini AI Task",
-          "description": "Use configured AI Task (Gemini) when available; if false, compute deterministic summary only."
+          "name": "Use AI Task",
+          "description": "Use configured AI Task when available; if false, compute deterministic summary only."
         },
         "notify": {
           "name": "Send Push Notification",
@@ -178,7 +192,7 @@
         },
         "notify_service": {
           "name": "Notify Service Override",
-          "description": "Optional notify service name(s), comma-separated (e.g. notify.family)."
+          "description": "Optional notify service name(s), comma-separated (e.g. notify.mobile_app_phone)."
         },
         "robot": {
           "name": "Robot",
@@ -188,15 +202,31 @@
     },
     "configure_health": {
       "name": "Configure AI Health & Auto Pet ID Options",
-      "description": "Persist HA Whisker Pet ID health summary schedule, AI Task entity, notify target, cluster thresholds, and Gemini Auto-Pet-ID options.",
+      "description": "Persist HA Whisker Pet ID robot selection, health summary schedule, AI Task entity, notify target, weight bounds, and Auto-Pet-ID options.",
       "fields": {
+        "robot": {
+          "name": "Litter-Robot Unit",
+          "description": "Optional Litter-Robot 5 name or serial (leave empty to auto-select sole unit)."
+        },
         "ai_task_entity": {
           "name": "AI Task Entity",
-          "description": "Home Assistant ai_task entity ID (e.g. ai_task.google_ai_task)."
+          "description": "Home Assistant ai_task entity ID (e.g. ai_task.my_ai_task)."
         },
         "notify_service": {
           "name": "Notify Service Target",
-          "description": "Home Assistant notify service name(s), comma-separated (e.g. notify.family)."
+          "description": "Home Assistant notify service name(s), comma-separated (e.g. notify.mobile_app_phone)."
+        },
+        "min_valid_weight_lbs": {
+          "name": "Minimum Valid Cat Weight (lb)",
+          "description": "Readings below this weight are treated as scale anomalies or partial entries."
+        },
+        "max_valid_weight_lbs": {
+          "name": "Maximum Valid Cat Weight (lb)",
+          "description": "Readings at or above this weight are treated as scale anomalies or multi-cat entries."
+        },
+        "weight_mismatch_lbs": {
+          "name": "Weight Mismatch Threshold (lb)",
+          "description": "Difference from a cat's baseline weight before flagging a visit as a mismatch."
         },
         "enable_daily_summary": {
           "name": "Enable Daily Summary",
@@ -240,15 +270,15 @@
         },
         "video_escalation": {
           "name": "Video Escalation Mode",
-          "description": "Thumbnail only, or escalate to MP4 video chunks when Gemini is uncertain."
+          "description": "Thumbnail only, or escalate to MP4 video chunks when AI Vision is uncertain."
         },
         "auto_pet_id_min_confidence": {
           "name": "Minimum Auto-Reassign Confidence",
-          "description": "Minimum Gemini confidence required for automatic reassignment (high or medium)."
+          "description": "Minimum AI confidence required for automatic reassignment (high or medium)."
         },
         "auto_unassign_scale_glitches": {
           "name": "Auto-Unassign Scale Glitches",
-          "description": "Automatically unassign <4.0 lb scale anomalies without calling Gemini."
+          "description": "Automatically unassign scale anomalies below Minimum Valid Cat Weight without calling AI Vision."
         },
         "auto_pet_id_notify": {
           "name": "Auto Pet ID Notification Policy",
@@ -260,17 +290,21 @@
         },
         "auto_pet_id_clip_delay_seconds": {
           "name": "Clip Upload Delay (Seconds)",
-          "description": "Seconds to wait after a visit before checking clips so LR5 Pro upload completes."
+          "description": "Seconds to wait after a visit before checking clips so LR5 camera upload completes."
         },
         "snapshot_camera_entity": {
           "name": "Troubleshooting Snapshot Camera",
-          "description": "Optional Home Assistant camera entity to capture an extra room freeze-frame alongside LR5 Pro thumbnails (leave empty to disable)."
+          "description": "Optional Home Assistant camera entity to capture an extra room freeze-frame alongside LR5 thumbnails (leave empty to disable)."
+        },
+        "snapshot_max_files": {
+          "name": "Snapshot History Limit",
+          "description": "Maximum number of local snapshot JPEGs to keep before pruning oldest files."
         }
       }
     },
     "verify_visits_with_ai": {
-      "name": "Verify Flagged Visits with Gemini Vision",
-      "description": "Evaluate recent flagged or specified LR5 visits using Hybrid Fast-Path + Gemini Vision (ai_task.generate_data) with optional dry-run or live reassignment.",
+      "name": "Verify Flagged Visits with AI Vision",
+      "description": "Evaluate recent flagged or specified LR5 visits using Hybrid Fast-Path + AI Vision (ai_task.generate_data) with optional dry-run or live reassignment.",
       "fields": {
         "event_id": {
           "name": "Event ID",
@@ -304,7 +338,7 @@
       "fields": {
         "pet": {
           "name": "Pet Name",
-          "description": "Filter alerts involving a specific pet (e.g. Lexi)."
+          "description": "Filter alerts involving a specific pet (e.g. Luna)."
         },
         "days": {
           "name": "Lookback Days",

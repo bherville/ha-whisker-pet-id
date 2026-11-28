@@ -16,9 +16,9 @@ list_visits:
   fields:
     robot:
       name: Robot
-      description: Optional Litter-Robot 5 name or serial (defaults to sole LR5 unit).
+      description: Optional Litter-Robot 5 name or serial (defaults to configured or sole LR5 unit).
       required: false
-      example: "Flex Room"
+      example: "Laundry Room"
       selector:
         text:
     limit:
@@ -89,7 +89,7 @@ get_clip_urls:
       name: Robot
       description: Optional Litter-Robot 5 name or serial.
       required: false
-      example: "Flex Room"
+      example: "Laundry Room"
       selector:
         text:
 
@@ -108,21 +108,21 @@ reassign_visit:
       name: From Pet
       description: Name or petId currently assigned to the visit (provide alone to unassign, or with to_pet to reassign).
       required: false
-      example: "Jane"
+      example: "Whiskers"
       selector:
         text:
     to_pet:
       name: To Pet
       description: Name or petId to assign the visit to (omit to unassign).
       required: false
-      example: "Sterling"
+      example: "Mittens"
       selector:
         text:
     robot:
       name: Robot
       description: Optional Litter-Robot 5 name or serial.
       required: false
-      example: "Flex Room"
+      example: "Laundry Room"
       selector:
         text:
     refresh:
@@ -135,7 +135,7 @@ reassign_visit:
 
 generate_health_summary:
   name: Generate AI Pet Health Summary
-  description: Generate household and per-cat Litter-Robot 5 health summaries using Home Assistant AI Task (Gemini) with automatic deterministic fallback.
+  description: Generate household and per-cat Litter-Robot 5 health summaries using a configured Home Assistant AI Task with automatic deterministic fallback.
   fields:
     hours:
       name: Lookback Window (Hours)
@@ -149,15 +149,15 @@ generate_health_summary:
           mode: box
     ai_task_entity:
       name: AI Task Entity
-      description: Optional ai_task entity ID override (defaults to configured option, e.g. ai_task.google_ai_task).
+      description: Optional ai_task entity ID override (defaults to configured option, e.g. ai_task.my_ai_task).
       required: false
-      example: "ai_task.google_ai_task"
+      example: "ai_task.my_ai_task"
       selector:
         entity:
           domain: ai_task
     use_ai:
-      name: Use Gemini AI Task
-      description: Use configured AI Task (Gemini) when available; if false, compute deterministic summary only.
+      name: Use AI Task
+      description: Use configured AI Task when available; if false, compute deterministic summary only.
       required: false
       default: true
       selector:
@@ -171,38 +171,78 @@ generate_health_summary:
         boolean:
     notify_service:
       name: Notify Service Override
-      description: Optional notify service name(s), comma-separated (e.g. notify.family).
+      description: Optional notify service name(s), comma-separated (e.g. notify.mobile_app_phone).
       required: false
-      example: "notify.family"
+      example: "notify.mobile_app_phone"
       selector:
         text:
     robot:
       name: Robot
       description: Optional Litter-Robot 5 name or serial.
       required: false
-      example: "Flex Room"
+      example: "Laundry Room"
       selector:
         text:
 
 configure_health:
-  name: Configure AI Health Options
-  description: Persist HA Whisker Pet ID health summary schedule, AI Task entity, notify target, and cluster alert options.
+  name: Configure AI Health & Auto Pet ID Options
+  description: Persist HA Whisker Pet ID robot selection, health summary schedule, AI Task entity, notify target, weight bounds, and Auto-Pet-ID options.
   fields:
+    robot:
+      name: Litter-Robot Unit
+      description: Optional Litter-Robot 5 name or serial (leave empty to auto-select sole unit).
+      required: false
+      example: "Laundry Room"
+      selector:
+        text:
     ai_task_entity:
       name: AI Task Entity
-      description: Home Assistant ai_task entity ID (e.g. ai_task.google_ai_task).
+      description: Home Assistant ai_task entity ID (e.g. ai_task.my_ai_task).
       required: false
-      example: "ai_task.google_ai_task"
+      example: "ai_task.my_ai_task"
       selector:
         entity:
           domain: ai_task
     notify_service:
       name: Notify Service Target
-      description: Home Assistant notify service name(s), comma-separated (e.g. notify.family).
+      description: Home Assistant notify service name(s), comma-separated (e.g. notify.mobile_app_phone).
       required: false
-      example: "notify.family"
+      example: "notify.mobile_app_phone"
       selector:
         text:
+    min_valid_weight_lbs:
+      name: Minimum Valid Cat Weight (lb)
+      description: Readings below this weight are treated as scale anomalies or partial entries.
+      required: false
+      selector:
+        number:
+          min: 1.0
+          max: 10.0
+          step: 0.5
+          unit_of_measurement: lb
+          mode: box
+    max_valid_weight_lbs:
+      name: Maximum Valid Cat Weight (lb)
+      description: Readings at or above this weight are treated as scale anomalies or multi-cat entries.
+      required: false
+      selector:
+        number:
+          min: 10.0
+          max: 40.0
+          step: 0.5
+          unit_of_measurement: lb
+          mode: box
+    weight_mismatch_lbs:
+      name: Weight Mismatch Threshold (lb)
+      description: Difference from a cat's baseline weight before flagging a visit as a mismatch.
+      required: false
+      selector:
+        number:
+          min: 0.25
+          max: 5.0
+          step: 0.05
+          unit_of_measurement: lb
+          mode: box
     enable_daily_summary:
       name: Enable Daily Summary
       description: Enable or disable the scheduled daily health summary.
@@ -288,7 +328,7 @@ configure_health:
         boolean:
     video_escalation:
       name: Video Escalation Mode
-      description: Thumbnail only, or escalate to MP4 video chunks when Gemini is uncertain.
+      description: Thumbnail only, or escalate to MP4 video chunks when AI Vision is uncertain.
       required: false
       example: "thumbnail_then_video"
       selector:
@@ -298,7 +338,7 @@ configure_health:
             - "thumbnail_then_video"
     auto_pet_id_min_confidence:
       name: Minimum Auto-Reassign Confidence
-      description: Minimum Gemini confidence required for automatic reassignment (high or medium).
+      description: Minimum AI confidence required for automatic reassignment (high or medium).
       required: false
       example: "high"
       selector:
@@ -308,7 +348,7 @@ configure_health:
             - "medium"
     auto_unassign_scale_glitches:
       name: Auto-Unassign Scale Glitches
-      description: Automatically unassign <4.0 lb scale anomalies without calling Gemini.
+      description: Automatically unassign scale anomalies below Minimum Valid Cat Weight without calling AI Vision.
       required: false
       selector:
         boolean:
@@ -334,7 +374,7 @@ configure_health:
           mode: box
     auto_pet_id_clip_delay_seconds:
       name: Clip Upload Delay (Seconds)
-      description: Seconds to wait after a visit before checking clips so LR5 Pro upload completes.
+      description: Seconds to wait after a visit before checking clips so LR5 camera upload completes.
       required: false
       selector:
         number:
@@ -343,16 +383,26 @@ configure_health:
           mode: box
     snapshot_camera_entity:
       name: Troubleshooting Snapshot Camera
-      description: Optional Home Assistant camera entity to capture an extra room freeze-frame alongside LR5 Pro thumbnails (leave empty to disable).
+      description: Optional Home Assistant camera entity to capture an extra room freeze-frame alongside LR5 thumbnails (leave empty to disable).
       required: false
-      example: "camera.reolink_e1_pro_high_resolution_channel"
+      example: "camera.litter_room"
       selector:
         entity:
           domain: camera
+    snapshot_max_files:
+      name: Snapshot History Limit
+      description: Maximum number of local snapshot JPEGs to keep before pruning oldest files.
+      required: false
+      selector:
+        number:
+          min: 10
+          max: 500
+          step: 10
+          mode: box
 
 verify_visits_with_ai:
-  name: Verify Flagged Visits with Gemini Vision
-  description: Evaluate recent flagged or specified LR5 visits using Hybrid Fast-Path + Gemini Vision (ai_task.generate_data) with optional dry-run or live reassignment.
+  name: Verify Flagged Visits with AI Vision
+  description: Evaluate recent flagged or specified LR5 visits using Hybrid Fast-Path + AI Vision (ai_task.generate_data) with optional dry-run or live reassignment.
   fields:
     event_id:
       name: Event ID
@@ -397,7 +447,7 @@ verify_visits_with_ai:
       name: Robot
       description: Optional Litter-Robot 5 name or serial.
       required: false
-      example: "Flex Room"
+      example: "Laundry Room"
       selector:
         text:
 
@@ -407,9 +457,9 @@ get_alert_history:
   fields:
     pet:
       name: Pet Name
-      description: Filter alerts involving a specific pet (e.g. Lexi).
+      description: Filter alerts involving a specific pet (e.g. Luna).
       required: false
-      example: "Lexi"
+      example: "Luna"
       selector:
         text:
     days:

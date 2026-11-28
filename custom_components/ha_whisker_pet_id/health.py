@@ -447,10 +447,10 @@ def _build_gemini_instructions(context: dict[str, Any]) -> str:
         "recent_visits_sample": context["recent_visits_sample"][:25],
     }
     return (
-        "You are analyzing multi-cat Litter-Robot 5 Pro telemetry for a veterinary wellness summary.\n"
+        "You are analyzing multi-cat Litter-Robot telemetry for a veterinary wellness summary.\n"
         "Review the per-cat counts, weights, durations, waste types, repeat-visit clusters, and recent sample below.\n"
-        "Important Pet ID caveat: if a visit carries 'weight_mismatch' and 'closest_pet' points to a heavier/different cat "
-        "(for example an ~11.5 lb visit misassigned to an ~8.6 lb cat), note that those clustered visits likely belong to "
+        "Important Pet ID caveat: if a visit carries 'weight_mismatch' and 'closest_pet' points to a different cat "
+        "(for example when the recorded scale weight closely matches a different cat's baseline than the currently assigned cat), note that those clustered visits likely belong to "
         "the weight-matched cat and mention that Pet ID reassignment is needed.\n"
         "Set overall_status to 'alert' when urinary clustering/straining or acute behavioral shifts appear, 'watch' for mild "
         "elevations, missing-visit gaps, or frequent Pet ID mismatches, and 'normal' otherwise.\n"

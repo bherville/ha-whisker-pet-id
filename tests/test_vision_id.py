@@ -510,12 +510,14 @@ class TestVisitSnapshotCapture(unittest.IsolatedAsyncioTestCase):
                     visit,
                     camera_entity_id="camera.reolink",
                     capture_live_camera=True,
+                    robot_label="Laundry Room LR5",
+                    max_files=5,
                 )
                 self.assertEqual(
                     snaps,
                     [
                         {
-                            "label": "Litter-Robot 5 Pro",
+                            "label": "Laundry Room LR5",
                             "url": "/local/ha_whisker_pet_id/snapshots/visit_evt-snap-1_lr5.jpg",
                         },
                         {
@@ -540,13 +542,70 @@ class TestVisitSnapshotCapture(unittest.IsolatedAsyncioTestCase):
                     capture_live_camera=False,
                 )
                 self.assertEqual(len(snaps_old), 1)
-                self.assertEqual(snaps_old[0]["label"], "Litter-Robot 5 Pro")
+                self.assertEqual(snaps_old[0]["label"], "Litter-Robot")
 
             # Verify bounded pruning retains only newest max_files
             snap_dir = root / "www/ha_whisker_pet_id/snapshots"
             removed = vision_id._prune_snapshots_sync(snap_dir, max_files=2)
             self.assertEqual(removed, 1)
             self.assertEqual(len(list(snap_dir.glob("*.jpg"))), 2)
+
+    def test_vision_prompt_is_generic_and_supports_custom_weight_bounds(self) -> None:
+        pets = [
+            {
+                "name": "Whiskers",
+                "estimated_weight_lbs": 17.5,
+                "recent_weight_history": [
+                    {"weight_lbs": 17.4},
+                    {"weight_lbs": 17.5},
+                    {"weight_lbs": 17.6},
+                ],
+            },
+            {
+                "name": "Mittens",
+                "estimated_weight_lbs": 8.0,
+                "recent_weight_history": [
+                    {"weight_lbs": 7.9},
+                    {"weight_lbs": 8.0},
+                    {"weight_lbs": 8.1},
+                ],
+            },
+        ]
+        baselines = vision_id.compute_clean_baselines(pets)
+        self.assertEqual(baselines["Whiskers"], 17.5)
+
+        visit = {
+            "event_id": "evt-gen-1",
+            "weight_lbs": 17.45,
+            "assigned_pets": ["Mittens"],
+            "is_reassigned": False,
+            "flags": ["weight_mismatch"],
+            "matched_clips": [{"clip_id": "c1", "pet_detections": []}],
+        }
+        prompt = vision_id._build_vision_instructions(
+            visit,
+            pets,
+            baselines,
+            uses_roster_sheet=True,
+            ref_pet_order=["Whiskers", "Mittens"],
+            stage="thumbnail",
+        )
+        for forbidden in ("Jane", "Lexi", "Sterling", "Ember", "Oreo"):
+            self.assertNotIn(forbidden, prompt)
+
+        fast_res = vision_id.evaluate_hybrid_fast_path(visit, baselines, enabled=True)
+        self.assertIsNotNone(fast_res)
+        self.assertEqual(fast_res["recommended_pet"], "Whiskers")
+
+        # Enforcing a custom 16.0 lb upper ceiling blocks the 17.45 lb fast-path
+        self.assertIsNone(
+            vision_id.evaluate_hybrid_fast_path(
+                visit,
+                baselines,
+                enabled=True,
+                max_valid_weight_lbs=16.0,
+            )
+        )
 
 
 if __name__ == "__main__":

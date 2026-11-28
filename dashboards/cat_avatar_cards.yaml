@@ -1,20 +1,20 @@
 # Example circular cat avatar Mushroom template cards using the locally cached
 # cat portraits saved by ha_whisker_pet_id at /local/ha_whisker_pet_id/pets/<pet>.jpg.
-# Replace "ember" / "Ember" with each cat's slug and display name.
+# Replace "my_cat" / "My Cat" with each cat's slug and display name.
 type: grid
 columns: 2
 square: false
 cards:
   - type: custom:mushroom-template-card
-    entity: sensor.ha_whisker_pet_id_ember_health_summary
-    primary: Ember
+    entity: sensor.ha_whisker_pet_id_my_cat_health_summary
+    primary: My Cat
     secondary: >-
-      {{ states('sensor.ember_weight') | float(0) | round(2) }} lb •
-      {{ states('sensor.ha_whisker_pet_id_ember_health_summary') | title }}
-    picture: /local/ha_whisker_pet_id/pets/ember.jpg
+      {{ states('sensor.my_cat_weight') | float(0) | round(2) }} lb •
+      {{ states('sensor.ha_whisker_pet_id_my_cat_health_summary') | title }}
+    picture: /local/ha_whisker_pet_id/pets/my_cat.jpg
     tap_action:
       action: more-info
   - type: tile
-    entity: sensor.ha_whisker_pet_id_ember_health_summary
-    name: Ember Health
+    entity: sensor.ha_whisker_pet_id_my_cat_health_summary
+    name: My Cat Health
     show_entity_picture: true

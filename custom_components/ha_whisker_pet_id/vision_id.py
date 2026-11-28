@@ -75,6 +75,9 @@ def _url_identity_path(url: str) -> str:
 def compute_clean_baselines(
     pets: list[dict[str, Any]],
     stored_baselines: dict[str, float] | None = None,
+    *,
+    min_valid_weight_lbs: float = DEFAULT_MIN_VALID_WEIGHT_LBS,
+    max_valid_weight_lbs: float = DEFAULT_MAX_VALID_WEIGHT_LBS,
 ) -> dict[str, float]:
     """Compute contamination-resistant median pet weight baselines in pounds."""
     stored = stored_baselines or {}
@@ -91,7 +94,7 @@ def compute_clean_baselines(
             if (
                 isinstance(w_raw, (int, float))
                 and not isinstance(w_raw, bool)
-                and DEFAULT_MIN_VALID_WEIGHT_LBS <= float(w_raw) < DEFAULT_MAX_VALID_WEIGHT_LBS
+                and min_valid_weight_lbs <= float(w_raw) < max_valid_weight_lbs
             ):
                 valid.append(float(w_raw))
 
@@ -117,6 +120,8 @@ def evaluate_hybrid_fast_path(
     clean_baselines: dict[str, float],
     *,
     enabled: bool = True,
+    min_valid_weight_lbs: float = DEFAULT_MIN_VALID_WEIGHT_LBS,
+    max_valid_weight_lbs: float = DEFAULT_MAX_VALID_WEIGHT_LBS,
 ) -> dict[str, Any] | None:
     """Return a zero-token decision when scale weight is unambiguously separated."""
     if not enabled or visit.get("is_reassigned") is True:
@@ -130,8 +135,8 @@ def evaluate_hybrid_fast_path(
     if (
         not isinstance(weight_lbs, (int, float))
         or isinstance(weight_lbs, bool)
-        or float(weight_lbs) < DEFAULT_MIN_VALID_WEIGHT_LBS
-        or float(weight_lbs) >= DEFAULT_MAX_VALID_WEIGHT_LBS
+        or float(weight_lbs) < min_valid_weight_lbs
+        or float(weight_lbs) >= max_valid_weight_lbs
     ):
         return None
     w = float(weight_lbs)
@@ -512,15 +517,18 @@ async def async_save_visit_snapshots(
     *,
     camera_entity_id: str = "",
     capture_live_camera: bool = False,
+    robot_label: str = "Litter-Robot",
+    max_files: int = SNAPSHOT_MAX_FILES,
 ) -> list[dict[str, str]]:
-    """Save bounded freeze-frame snapshots (LR5 Pro + optional HA room camera)."""
+    """Save bounded freeze-frame snapshots (LR5 + optional HA room camera)."""
     raw_id = str(visit.get("event_id") or visit.get("local_time") or "visit")
     safe_eid = _safe_slug(raw_id)
     snap_dir = get_snapshot_www_dir(hass)
+    clean_robot_label = (robot_label or "").strip() or "Litter-Robot"
     snapshots: list[dict[str, str]] = []
     wrote_file = False
 
-    # 1. Litter-Robot 5 Pro visit thumbnail
+    # 1. Litter-Robot visit thumbnail
     lr5_filename = f"visit_{safe_eid}_lr5.jpg"
     lr5_path = snap_dir / lr5_filename
     clip = _extract_primary_clip(visit)
@@ -529,7 +537,7 @@ async def async_save_visit_snapshots(
     if lr5_path.is_file() and lr5_path.stat().st_size > 0:
         snapshots.append(
             {
-                "label": "Litter-Robot 5 Pro",
+                "label": clean_robot_label,
                 "url": f"{SNAPSHOT_LOCAL_URL_PREFIX}/{lr5_filename}",
             }
         )
@@ -542,7 +550,7 @@ async def async_save_visit_snapshots(
                 wrote_file = True
                 snapshots.append(
                     {
-                        "label": "Litter-Robot 5 Pro",
+                        "label": clean_robot_label,
                         "url": f"{SNAPSHOT_LOCAL_URL_PREFIX}/{lr5_filename}",
                     }
                 )
@@ -590,7 +598,7 @@ async def async_save_visit_snapshots(
     if wrote_file:
         try:
             await hass.async_add_executor_job(
-                _prune_snapshots_sync, snap_dir, SNAPSHOT_MAX_FILES
+                _prune_snapshots_sync, snap_dir, max(1, int(max_files))
             )
         except Exception as err:
             _LOGGER.debug("Failed pruning snapshots in %s: %s", snap_dir, err)
@@ -599,7 +607,11 @@ async def async_save_visit_snapshots(
 
 
 def _format_roster_lines(
-    pets: list[dict[str, Any]], clean_baselines: dict[str, float]
+    pets: list[dict[str, Any]],
+    clean_baselines: dict[str, float],
+    *,
+    min_valid_weight_lbs: float = DEFAULT_MIN_VALID_WEIGHT_LBS,
+    max_valid_weight_lbs: float = DEFAULT_MAX_VALID_WEIGHT_LBS,
 ) -> str:
     lines: list[str] = []
     for pet in pets:
@@ -612,7 +624,7 @@ def _format_roster_lines(
             for h in (pet.get("recent_weight_history") or [])
             if isinstance(h, dict)
             and isinstance(h.get("weight_lbs"), (int, float))
-            and DEFAULT_MIN_VALID_WEIGHT_LBS <= float(h["weight_lbs"]) < DEFAULT_MAX_VALID_WEIGHT_LBS
+            and min_valid_weight_lbs <= float(h["weight_lbs"]) < max_valid_weight_lbs
         ]
         hist_range = (
             f"{min(valid_hist):.2f}-{max(valid_hist):.2f} lb"
@@ -643,8 +655,15 @@ def _build_vision_instructions(
     uses_roster_sheet: bool,
     ref_pet_order: list[str],
     stage: str,
+    min_valid_weight_lbs: float = DEFAULT_MIN_VALID_WEIGHT_LBS,
+    max_valid_weight_lbs: float = DEFAULT_MAX_VALID_WEIGHT_LBS,
 ) -> str:
-    roster_text = _format_roster_lines(pets, clean_baselines)
+    roster_text = _format_roster_lines(
+        pets,
+        clean_baselines,
+        min_valid_weight_lbs=min_valid_weight_lbs,
+        max_valid_weight_lbs=max_valid_weight_lbs,
+    )
     clip = _extract_primary_clip(visit) or {}
     detections = [
         d.get("petName") or d.get("petId")
@@ -670,14 +689,14 @@ def _build_vision_instructions(
         )
 
     stage_note = (
-        "The final attachment is the Litter-Robot 5 Pro entry/exit thumbnail for this visit. "
+        "The final attachment is the Litter-Robot entry/exit thumbnail for this visit. "
         "If the cat is distant, blurry, obscured, nighttime IR makes coat colors ambiguous, or multiple cats appear, set needs_video='true'."
         if stage == "thumbnail"
         else "Stage 1 thumbnail was inconclusive. The final attachments are entry and interior MP4 video clips from this visit — identify the cat that actually enters and uses the Litter-Robot globe."
     )
 
     return (
-        "You are verifying Litter-Robot 5 Pro Pet ID attribution from camera media and scale weight.\n"
+        "You are verifying Litter-Robot Pet ID attribution from camera media and scale weight.\n"
         f"{ref_desc}\n"
         f"{stage_note}\n\n"
         "Household Cats:\n"
@@ -686,12 +705,12 @@ def _build_vision_instructions(
         f"- Local time: {visit.get('local_time') or visit.get('timestamp')}\n"
         f"- Scale weight: {visit.get('weight_lbs')} lb (waste {visit.get('waste_type')} / {visit.get('waste_weight')}g)\n"
         f"- Duration: {visit.get('duration_seconds')}s\n"
-        f"- Whisker currently assigned pet: {assigned} (NOTE: Whisker camera AI frequently mislabels short visits, especially tagging a heavier brown tabby as Jane!)\n"
+        f"- Whisker currently assigned pet: {assigned} (NOTE: Whisker camera AI can mislabel short visits or confuse similarly colored cats; verify independently against the reference photos and weight.)\n"
         f"- Whisker clip detections: {detections or ['none']}\n"
         f"- Closest by clean weight: {closest or 'none'}\n"
         f"- Flags: {visit.get('flags') or []}\n\n"
         "Rules:\n"
-        "1. Rely primarily on the actual visual appearance (coat colors, white paws/bib, tabby pattern, calico patches, tuxedo pattern) compared against the reference photos, cross-checked against scale weight.\n"
+        "1. Rely primarily on the actual visual appearance (coat colors, markings, ear/face shape, tail, and body build) compared against the reference photos, cross-checked against scale weight.\n"
         "2. Do NOT blindly trust Whisker's assigned pet or clip detection.\n"
         "3. In recommended_pet, return the exact cat name from the household list, or 'KEEP' if already right, or 'UNCERTAIN' if you cannot tell.\n"
         "4. Return confidence ('high'|'medium'|'low'), confidence_score (0.0-1.0), visual_match ('clear'|'partial'|'unclear'|'no_cat_visible'), needs_video ('true'|'false'), and concise 1-2 sentence reasoning."
@@ -846,8 +865,21 @@ async def async_verify_visit_with_gemini(
     ai_task_entity: str,
     video_escalation: str = "thumbnail_then_video",
     robot_id: str | None = None,
+    min_valid_weight_lbs: float = DEFAULT_MIN_VALID_WEIGHT_LBS,
+    max_valid_weight_lbs: float = DEFAULT_MAX_VALID_WEIGHT_LBS,
 ) -> dict[str, Any]:
     """Run Stage 1 thumbnail verification and optional Stage 2 MP4 video escalation."""
+    if not (ai_task_entity or "").strip():
+        return {
+            "recommended_pet": "UNCERTAIN",
+            "confidence": "low",
+            "confidence_score": 0.0,
+            "visual_match": "unclear",
+            "needs_video": False,
+            "stage": "unavailable",
+            "reasoning": "No AI Task entity is configured in HA Whisker Pet ID options.",
+        }
+
     if not hass.services.has_service("ai_task", "generate_data"):
         return {
             "recommended_pet": "UNCERTAIN",
@@ -879,7 +911,7 @@ async def async_verify_visit_with_gemini(
             "visual_match": "no_cat_visible",
             "needs_video": False,
             "stage": "no_clip",
-            "reasoning": "No matching LR5 Pro camera clip available for visual verification.",
+            "reasoning": "No matching LR5 camera clip available for visual verification.",
         }
 
     known_pets = [str(p.get("name")) for p in pets if p.get("name")]
@@ -910,6 +942,8 @@ async def async_verify_visit_with_gemini(
                 uses_roster_sheet=uses_roster_sheet,
                 ref_pet_order=ref_pet_order,
                 stage="thumbnail",
+                min_valid_weight_lbs=min_valid_weight_lbs,
+                max_valid_weight_lbs=max_valid_weight_lbs,
             )
             stage1_result = await _async_call_gemini_vision(
                 hass,
@@ -988,6 +1022,8 @@ async def async_verify_visit_with_gemini(
                     uses_roster_sheet=uses_roster_sheet,
                     ref_pet_order=ref_pet_order,
                     stage="video",
+                    min_valid_weight_lbs=min_valid_weight_lbs,
+                    max_valid_weight_lbs=max_valid_weight_lbs,
                 )
                 return await _async_call_gemini_vision(
                     hass,
@@ -1036,6 +1072,7 @@ def evaluate_reassignment_safety(
     mode: str,
     min_confidence: str = "high",
     max_target_weight_delta_lbs: float = DEFAULT_MAX_TARGET_WEIGHT_DELTA_LBS,
+    min_valid_weight_lbs: float = DEFAULT_MIN_VALID_WEIGHT_LBS,
 ) -> dict[str, Any]:
     """Apply confidence, visual clarity, and weight-plausibility gates before mutating."""
     assigned_pets = [str(p) for p in (visit.get("assigned_pets") or []) if p]
@@ -1082,7 +1119,7 @@ def evaluate_reassignment_safety(
     if (
         isinstance(weight_lbs, (int, float))
         and not isinstance(weight_lbs, bool)
-        and float(weight_lbs) < DEFAULT_MIN_VALID_WEIGHT_LBS
+        and float(weight_lbs) < min_valid_weight_lbs
     ):
         return {
             "action": "needs_review",

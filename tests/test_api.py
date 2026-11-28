@@ -153,12 +153,12 @@ class TestApiHelpers(unittest.TestCase):
         self.assertEqual(res["matched_clips"][0]["clip_id"], "99901")
         self.assertEqual(res["matched_clips"][0]["matched_by"], "timestamp")
 
-        # Unassigned at 11.53 lb is valid weight (below 14.0 lb anomaly ceiling)
+        # Unassigned at 15.50 lb is valid weight for larger breeds (below 25.0 lb anomaly ceiling)
         act_unassigned = {
             "eventId": "evt-2",
             "type": "PET_VISIT",
             "timestamp": "2026-11-24T14:35:00Z",
-            "petWeight": 1153.0,
+            "petWeight": 1550.0,
             "petIds": [],
             "cameraEventIds": ["99901"],
         }
@@ -168,12 +168,23 @@ class TestApiHelpers(unittest.TestCase):
         self.assertEqual(res_un["flags"], ["unassigned"])
         self.assertEqual(res_un["matched_clips"][0]["matched_by"], "id")
 
-        # Scale anomaly + unassigned visit (15.50 lb >= 14.0 lb ceiling)
+        # Custom max_valid_weight_lbs override (14.0 lb) flags 15.50 lb as scale_anomaly
+        res_custom = api.analyze_visit(
+            act_unassigned,
+            pets_by_id,
+            all_pets,
+            clips,
+            "America/Chicago",
+            max_valid_weight_lbs=14.0,
+        )
+        self.assertEqual(res_custom["flags"], ["unassigned", "scale_anomaly"])
+
+        # Default max_valid_weight_lbs (25.0 lb) flags 26.50 lb as scale_anomaly
         act_anomaly = {
             "eventId": "evt-3",
             "type": "PET_VISIT",
             "timestamp": "2026-11-24T14:36:00Z",
-            "petWeight": 1550.0,
+            "petWeight": 2650.0,
             "petIds": [],
             "cameraEventIds": [],
         }

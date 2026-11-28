@@ -45,11 +45,16 @@ from .const import (
     CONF_ENABLE_HYBRID_FAST_PATH,
     CONF_ENABLE_PUSH_ALERTS,
     CONF_HEALTH_WINDOW_HOURS,
+    CONF_MAX_VALID_WEIGHT_LBS,
+    CONF_MIN_VALID_WEIGHT_LBS,
     CONF_NOTIFY_SERVICE,
+    CONF_ROBOT,
     CONF_SNAPSHOT_CAMERA_ENTITY,
+    CONF_SNAPSHOT_MAX_FILES,
     CONF_SUMMARY_HOUR,
     CONF_SUMMARY_MINUTE,
     CONF_VIDEO_ESCALATION,
+    CONF_WEIGHT_MISMATCH_LBS,
     DEFAULT_AI_TASK_ENTITY,
     DEFAULT_ALERT_COOLDOWN_HOURS,
     DEFAULT_AUTO_PET_ID_CLIP_DELAY_SECONDS,
@@ -64,16 +69,20 @@ from .const import (
     DEFAULT_ENABLE_HYBRID_FAST_PATH,
     DEFAULT_ENABLE_PUSH_ALERTS,
     DEFAULT_HEALTH_WINDOW_HOURS,
+    DEFAULT_MAX_VALID_WEIGHT_LBS,
     DEFAULT_MIN_VALID_WEIGHT_LBS,
     DEFAULT_NOTIFY_SERVICE,
+    DEFAULT_ROBOT,
     DEFAULT_SCAN_INTERVAL_MINUTES,
     DEFAULT_SNAPSHOT_CAMERA_ENTITY,
     DEFAULT_SUMMARY_HOUR,
     DEFAULT_SUMMARY_MINUTE,
     DEFAULT_VIDEO_ESCALATION,
+    DEFAULT_WEIGHT_MISMATCH_LBS,
     DOMAIN,
     LITTERROBOT_DOMAIN,
     SNAPSHOT_LIVE_CAMERA_MAX_AGE_SECONDS,
+    SNAPSHOT_MAX_FILES,
 )
 from .health import (
     async_generate_ai_health_summary,
@@ -197,6 +206,23 @@ class WhiskerHealthCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if ai_task_entity is not None
             else str(self.option(CONF_AI_TASK_ENTITY, DEFAULT_AI_TASK_ENTITY))
         )
+        effective_robot = (
+            robot_id
+            or str(self.option(CONF_ROBOT, DEFAULT_ROBOT)).strip()
+            or None
+        )
+        min_weight = float(
+            self.option(CONF_MIN_VALID_WEIGHT_LBS, DEFAULT_MIN_VALID_WEIGHT_LBS)
+        )
+        max_weight = float(
+            self.option(CONF_MAX_VALID_WEIGHT_LBS, DEFAULT_MAX_VALID_WEIGHT_LBS)
+        )
+        mismatch_lbs = float(
+            self.option(CONF_WEIGHT_MISMATCH_LBS, DEFAULT_WEIGHT_MISMATCH_LBS)
+        )
+        snapshot_max_files = int(
+            self.option(CONF_SNAPSHOT_MAX_FILES, SNAPSHOT_MAX_FILES)
+        )
 
         try:
             pets_resp = await async_get_pets_summary(self.hass, refresh=False)
@@ -208,15 +234,20 @@ class WhiskerHealthCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             clean_baselines = compute_clean_baselines(
                 pets_resp.get("pets", []),
                 cached_baselines if isinstance(cached_baselines, dict) else None,
+                min_valid_weight_lbs=min_weight,
+                max_valid_weight_lbs=max_weight,
             )
             if diag_coord is not None and clean_baselines:
                 diag_coord._clean_baselines = clean_baselines
             visits_resp = await async_list_visits(
                 self.hass,
-                robot_id=robot_id,
+                robot_id=effective_robot,
                 limit=200,
                 activity_type="PET_VISIT",
                 include_clips=False,
+                mismatch_threshold_lbs=mismatch_lbs,
+                min_valid_weight_lbs=min_weight,
+                max_valid_weight_lbs=max_weight,
                 baseline_overrides=clean_baselines or None,
             )
         except HomeAssistantError as err:
@@ -271,10 +302,13 @@ class WhiskerHealthCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 websession = getattr(getattr(account, "session", None), "websession", None)
                 clips_resp = await async_list_visits(
                     self.hass,
-                    robot_id=robot_id,
+                    robot_id=effective_robot,
                     limit=80,
                     activity_type="PET_VISIT",
                     include_clips=True,
+                    mismatch_threshold_lbs=mismatch_lbs,
+                    min_valid_weight_lbs=min_weight,
+                    max_valid_weight_lbs=max_weight,
                     baseline_overrides=clean_baselines or None,
                 )
                 visit_by_eid = {
@@ -287,6 +321,9 @@ class WhiskerHealthCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         CONF_SNAPSHOT_CAMERA_ENTITY, DEFAULT_SNAPSHOT_CAMERA_ENTITY
                     )
                 ).strip()
+                robot_label = str(
+                    visits_resp.get("robot") or clips_resp.get("robot") or "Litter-Robot"
+                ).strip() or "Litter-Robot"
                 now_utc = datetime.now(timezone.utc)
                 event_snapshots: dict[str, list[dict[str, str]]] = {}
                 for target_eid in target_snapshot_eids:
@@ -305,6 +342,8 @@ class WhiskerHealthCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         matched_visit,
                         camera_entity_id=snapshot_camera,
                         capture_live_camera=is_recent,
+                        robot_label=robot_label,
+                        max_files=snapshot_max_files,
                     )
                     if snaps:
                         event_snapshots[target_eid] = snaps
@@ -694,12 +733,26 @@ class WhiskerPetIdCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch recent PET_VISIT events and run safety-net auto-verification if needed."""
+        configured_robot = str(self.option(CONF_ROBOT, DEFAULT_ROBOT)).strip() or None
+        min_weight = float(
+            self.option(CONF_MIN_VALID_WEIGHT_LBS, DEFAULT_MIN_VALID_WEIGHT_LBS)
+        )
+        max_weight = float(
+            self.option(CONF_MAX_VALID_WEIGHT_LBS, DEFAULT_MAX_VALID_WEIGHT_LBS)
+        )
+        mismatch_lbs = float(
+            self.option(CONF_WEIGHT_MISMATCH_LBS, DEFAULT_WEIGHT_MISMATCH_LBS)
+        )
         try:
             data = await async_list_visits(
                 self.hass,
+                robot_id=configured_robot,
                 limit=50,
                 activity_type="PET_VISIT",
                 include_clips=False,
+                mismatch_threshold_lbs=mismatch_lbs,
+                min_valid_weight_lbs=min_weight,
+                max_valid_weight_lbs=max_weight,
                 baseline_overrides=self._clean_baselines or None,
             )
         except HomeAssistantError as err:
@@ -834,6 +887,23 @@ class WhiskerPetIdCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ai_task_entity = str(
                 self.option(CONF_AI_TASK_ENTITY, DEFAULT_AI_TASK_ENTITY)
             )
+            effective_robot = (
+                robot_id
+                or str(self.option(CONF_ROBOT, DEFAULT_ROBOT)).strip()
+                or None
+            )
+            min_weight = float(
+                self.option(CONF_MIN_VALID_WEIGHT_LBS, DEFAULT_MIN_VALID_WEIGHT_LBS)
+            )
+            max_weight = float(
+                self.option(CONF_MAX_VALID_WEIGHT_LBS, DEFAULT_MAX_VALID_WEIGHT_LBS)
+            )
+            mismatch_lbs = float(
+                self.option(CONF_WEIGHT_MISMATCH_LBS, DEFAULT_WEIGHT_MISMATCH_LBS)
+            )
+            snapshot_max_files = int(
+                self.option(CONF_SNAPSHOT_MAX_FILES, SNAPSHOT_MAX_FILES)
+            )
             clip_delay = int(
                 self.option(
                     CONF_AUTO_PET_ID_CLIP_DELAY_SECONDS,
@@ -850,14 +920,22 @@ class WhiskerPetIdCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             pets_resp = await async_get_pets_summary(self.hass, refresh=False)
             pets = pets_resp.get("pets", [])
-            self._clean_baselines = compute_clean_baselines(pets, self._clean_baselines)
+            self._clean_baselines = compute_clean_baselines(
+                pets,
+                self._clean_baselines,
+                min_valid_weight_lbs=min_weight,
+                max_valid_weight_lbs=max_weight,
+            )
 
             visits_resp = await async_list_visits(
                 self.hass,
-                robot_id=robot_id,
+                robot_id=effective_robot,
                 limit=max(40, batch_cap * 3),
                 activity_type="PET_VISIT",
                 include_clips=True,
+                mismatch_threshold_lbs=mismatch_lbs,
+                min_valid_weight_lbs=min_weight,
+                max_valid_weight_lbs=max_weight,
                 baseline_overrides=self._clean_baselines,
             )
             visits = visits_resp.get("visits", [])
@@ -908,7 +986,7 @@ class WhiskerPetIdCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if (
                     isinstance(weight_lbs, (int, float))
                     and not isinstance(weight_lbs, bool)
-                    and float(weight_lbs) < DEFAULT_MIN_VALID_WEIGHT_LBS
+                    and float(weight_lbs) < min_weight
                     and unassign_glitches
                     and assigned_pets
                 ):
@@ -923,7 +1001,11 @@ class WhiskerPetIdCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     }
                 else:
                     fast_decision = evaluate_hybrid_fast_path(
-                        visit, self._clean_baselines, enabled=use_fast_path
+                        visit,
+                        self._clean_baselines,
+                        enabled=use_fast_path,
+                        min_valid_weight_lbs=min_weight,
+                        max_valid_weight_lbs=max_weight,
                     )
                     if fast_decision is not None:
                         raw_decision = fast_decision
@@ -954,7 +1036,9 @@ class WhiskerPetIdCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                 media_root=media_root,
                                 ai_task_entity=ai_task_entity,
                                 video_escalation=esc_mode,
-                                robot_id=robot_id,
+                                robot_id=effective_robot,
+                                min_valid_weight_lbs=min_weight,
+                                max_valid_weight_lbs=max_weight,
                             )
                             self._stats["gemini_calls_count"] = int(
                                 self._stats.get("gemini_calls_count", 0)
@@ -966,14 +1050,14 @@ class WhiskerPetIdCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             self._stats["last_error"] = str(rate_err)
                             rate_limited = True
                             _LOGGER.warning(
-                                "Gemini quota/rate-limit hit; pausing auto Pet ID for %sm: %s",
+                                "AI Vision quota/rate-limit hit; pausing auto Pet ID for %sm: %s",
                                 AUTO_PET_ID_BACKOFF_MINUTES,
                                 rate_err,
                             )
                             break
                         except Exception as err:
                             _LOGGER.warning(
-                                "Gemini Pet ID failed on event %s: %s", eid, err
+                                "AI Vision Pet ID failed on event %s: %s", eid, err
                             )
                             self._stats["last_error"] = str(err)
                             raw_decision = {
@@ -983,7 +1067,7 @@ class WhiskerPetIdCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                 "visual_match": "unclear",
                                 "needs_video": False,
                                 "stage": "gemini_error",
-                                "reasoning": f"Gemini verification error: {err}",
+                                "reasoning": f"AI Vision verification error: {err}",
                             }
 
                 gated = evaluate_reassignment_safety(
@@ -992,6 +1076,7 @@ class WhiskerPetIdCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self._clean_baselines,
                     mode=effective_mode,
                     min_confidence=min_conf,
+                    min_valid_weight_lbs=min_weight,
                 )
                 action = gated["action"]
                 from_pet = gated["from_pet"]
@@ -1004,7 +1089,7 @@ class WhiskerPetIdCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             event_id=eid,
                             from_pet=from_pet,
                             to_pet=to_pet,
-                            robot_id=robot_id,
+                            robot_id=effective_robot,
                             refresh=False,
                         )
                         mutated = True
@@ -1035,6 +1120,9 @@ class WhiskerPetIdCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         CONF_SNAPSHOT_CAMERA_ENTITY, DEFAULT_SNAPSHOT_CAMERA_ENTITY
                     )
                 ).strip()
+                robot_label = str(
+                    visits_resp.get("robot") or "Litter-Robot"
+                ).strip() or "Litter-Robot"
                 vdt_rec = parse_timestamp(visit.get("timestamp"))
                 is_recent_rec = (
                     vdt_rec is None
@@ -1047,6 +1135,8 @@ class WhiskerPetIdCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     visit,
                     camera_entity_id=snapshot_camera,
                     capture_live_camera=is_recent_rec,
+                    robot_label=robot_label,
+                    max_files=snapshot_max_files,
                 )
 
                 record = {

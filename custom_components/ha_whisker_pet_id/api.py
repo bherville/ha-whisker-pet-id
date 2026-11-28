@@ -186,7 +186,11 @@ def serialize_pet(pet: Any) -> dict[str, Any]:
 
 
 def compute_pet_baseline_lbs(
-    pet: Any, baseline_overrides: dict[str, float] | None = None
+    pet: Any,
+    baseline_overrides: dict[str, float] | None = None,
+    *,
+    min_valid_weight_lbs: float = DEFAULT_MIN_VALID_WEIGHT_LBS,
+    max_valid_weight_lbs: float = DEFAULT_MAX_VALID_WEIGHT_LBS,
 ) -> float | None:
     """Return a clean baseline weight in lbs, resisting single-visit poisoning."""
     pet_id = str(getattr(pet, "id", "") or "")
@@ -218,7 +222,7 @@ def compute_pet_baseline_lbs(
         if (
             isinstance(raw_w, (int, float))
             and not isinstance(raw_w, bool)
-            and DEFAULT_MIN_VALID_WEIGHT_LBS <= float(raw_w) < DEFAULT_MAX_VALID_WEIGHT_LBS
+            and min_valid_weight_lbs <= float(raw_w) < max_valid_weight_lbs
         ):
             valid_history.append(float(raw_w))
 
@@ -278,7 +282,12 @@ def analyze_visit(
     if weight_lbs is not None:
         candidates = []
         for pet in all_pets:
-            est = compute_pet_baseline_lbs(pet, baseline_overrides)
+            est = compute_pet_baseline_lbs(
+                pet,
+                baseline_overrides,
+                min_valid_weight_lbs=min_valid_weight_lbs,
+                max_valid_weight_lbs=max_valid_weight_lbs,
+            )
             if isinstance(est, (int, float)) and est > 0:
                 delta = round(weight_lbs - float(est), 2)
                 candidates.append(
@@ -305,7 +314,14 @@ def analyze_visit(
             baseline
             for pid in assigned_pet_ids
             if pid in pets_by_id
-            and (baseline := compute_pet_baseline_lbs(pets_by_id[pid], baseline_overrides))
+            and (
+                baseline := compute_pet_baseline_lbs(
+                    pets_by_id[pid],
+                    baseline_overrides,
+                    min_valid_weight_lbs=min_valid_weight_lbs,
+                    max_valid_weight_lbs=max_valid_weight_lbs,
+                )
+            )
             is not None
         ]
         if assigned_baselines and min(
@@ -473,6 +489,9 @@ async def async_list_visits(
     date_str: str | None = None,
     include_clips: bool = True,
     max_clip_delta_seconds: int = DEFAULT_MAX_CLIP_DELTA_SECONDS,
+    mismatch_threshold_lbs: float = DEFAULT_WEIGHT_MISMATCH_LBS,
+    min_valid_weight_lbs: float = DEFAULT_MIN_VALID_WEIGHT_LBS,
+    max_valid_weight_lbs: float = DEFAULT_MAX_VALID_WEIGHT_LBS,
     baseline_overrides: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """Fetch LR5 activities, join matching camera clips, and flag Pet ID issues."""
@@ -513,6 +532,9 @@ async def async_list_visits(
             clips,
             tz_name,
             max_clip_delta_seconds=max_clip_delta_seconds,
+            mismatch_threshold_lbs=mismatch_threshold_lbs,
+            max_valid_weight_lbs=max_valid_weight_lbs,
+            min_valid_weight_lbs=min_valid_weight_lbs,
             baseline_overrides=baseline_overrides,
         )
         for act in activities

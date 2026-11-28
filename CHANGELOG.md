@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.0 - 2026-11-28
+
+- **Full Household Configurability & Multi-Robot Support:** Added `robot` selection in initial setup and options flows (automatically listing all discovered Litter-Robot 5 units on your Whisker account), exposed native HA selectors for `ai_task_entity`, `snapshot_camera_entity`, `snapshot_max_files`, `min_valid_weight_lbs`, `max_valid_weight_lbs`, and `weight_mismatch_lbs` in both UI options and `ha_whisker_pet_id.configure_health`.
+- **Removed Personal Defaults & Hardcoded Weight Ceiling:** Cleared the hardcoded `ai_task_entity` default so users can select any HA AI Task provider cleanly, widened default scale weight bounds to `3.0–25.0 lb` (supporting larger and smaller breeds out of the box), and removed all personal household names/entity IDs from AI prompts, UI strings, services, dashboards, and docs.
+
 ## 0.6.0 - 2026-11-28
 
 - **Camera Freeze-Frame Troubleshooting Snapshots:** Added `async_save_visit_snapshots` to capture timestamp-matched Litter-Robot 5 Pro visit thumbnails and an optional Home Assistant room camera snapshot (`snapshot_camera_entity`, configurable in integration options and `configure_health`), automatically pruned to the newest 60 JPEGs under `/local/ha_whisker_pet_id/snapshots/`.

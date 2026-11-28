@@ -44,12 +44,21 @@ from .const import (
     CONF_ENABLE_HYBRID_FAST_PATH,
     CONF_ENABLE_PUSH_ALERTS,
     CONF_HEALTH_WINDOW_HOURS,
+    CONF_MAX_VALID_WEIGHT_LBS,
+    CONF_MIN_VALID_WEIGHT_LBS,
     CONF_NOTIFY_SERVICE,
+    CONF_ROBOT,
     CONF_SNAPSHOT_CAMERA_ENTITY,
+    CONF_SNAPSHOT_MAX_FILES,
     CONF_SUMMARY_HOUR,
     CONF_SUMMARY_MINUTE,
     CONF_VIDEO_ESCALATION,
+    CONF_WEIGHT_MISMATCH_LBS,
     DEFAULT_MAX_CLIP_DELTA_SECONDS,
+    DEFAULT_MAX_VALID_WEIGHT_LBS,
+    DEFAULT_MIN_VALID_WEIGHT_LBS,
+    DEFAULT_ROBOT,
+    DEFAULT_WEIGHT_MISMATCH_LBS,
     DOMAIN,
     SERVICE_CONFIGURE_HEALTH,
     SERVICE_GENERATE_HEALTH_SUMMARY,
@@ -119,9 +128,22 @@ GENERATE_HEALTH_SUMMARY_SCHEMA = vol.Schema(
 
 CONFIGURE_HEALTH_SCHEMA = vol.Schema(
     {
+        vol.Optional(CONF_ROBOT): cv.string,
         vol.Optional(CONF_AI_TASK_ENTITY): cv.string,
         vol.Optional(CONF_NOTIFY_SERVICE): cv.string,
         vol.Optional(CONF_SNAPSHOT_CAMERA_ENTITY): cv.string,
+        vol.Optional(CONF_SNAPSHOT_MAX_FILES): vol.All(
+            vol.Coerce(int), vol.Range(min=10, max=500)
+        ),
+        vol.Optional(CONF_MIN_VALID_WEIGHT_LBS): vol.All(
+            vol.Coerce(float), vol.Range(min=1.0, max=10.0)
+        ),
+        vol.Optional(CONF_MAX_VALID_WEIGHT_LBS): vol.All(
+            vol.Coerce(float), vol.Range(min=10.0, max=40.0)
+        ),
+        vol.Optional(CONF_WEIGHT_MISMATCH_LBS): vol.All(
+            vol.Coerce(float), vol.Range(min=0.25, max=5.0)
+        ),
         vol.Optional(CONF_ENABLE_DAILY_SUMMARY): cv.boolean,
         vol.Optional(CONF_SUMMARY_HOUR): vol.All(vol.Coerce(int), vol.Range(min=0, max=23)),
         vol.Optional(CONF_SUMMARY_MINUTE): vol.All(vol.Coerce(int), vol.Range(min=0, max=59)),
@@ -202,6 +224,19 @@ def _iter_alert_histories(hass: HomeAssistant) -> list[AlertHistoryManager]:
     return histories
 
 
+def _configured_defaults(
+    hass: HomeAssistant,
+) -> tuple[str | None, float, float, float]:
+    """Return configured (robot_id, mismatch_lbs, min_weight_lbs, max_weight_lbs)."""
+    entries = hass.config_entries.async_entries(DOMAIN)
+    opts = entries[0].options if entries else {}
+    robot = str(opts.get(CONF_ROBOT, DEFAULT_ROBOT) or "").strip() or None
+    mismatch_lbs = float(opts.get(CONF_WEIGHT_MISMATCH_LBS, DEFAULT_WEIGHT_MISMATCH_LBS))
+    min_weight = float(opts.get(CONF_MIN_VALID_WEIGHT_LBS, DEFAULT_MIN_VALID_WEIGHT_LBS))
+    max_weight = float(opts.get(CONF_MAX_VALID_WEIGHT_LBS, DEFAULT_MAX_VALID_WEIGHT_LBS))
+    return robot, mismatch_lbs, min_weight, max_weight
+
+
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Register HA Whisker Pet ID service actions and built-in frontend cards."""
     hass.data.setdefault(DOMAIN, {})
@@ -216,9 +251,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def handle_list_visits(call: ServiceCall) -> ServiceResponse:
         diag_list, _ = _iter_coordinators(hass)
         baselines = diag_list[0]._clean_baselines if diag_list else None
+        cfg_robot, mismatch_lbs, min_weight, max_weight = _configured_defaults(hass)
         return await async_list_visits(
             hass,
-            robot_id=call.data.get("robot"),
+            robot_id=call.data.get("robot") or cfg_robot,
             limit=int(call.data.get("limit", 50)),
             offset=int(call.data.get("offset", 0)),
             activity_type=call.data.get("activity_type", "PET_VISIT"),
@@ -227,23 +263,28 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             max_clip_delta_seconds=int(
                 call.data.get("max_clip_delta_seconds", DEFAULT_MAX_CLIP_DELTA_SECONDS)
             ),
+            mismatch_threshold_lbs=mismatch_lbs,
+            min_valid_weight_lbs=min_weight,
+            max_valid_weight_lbs=max_weight,
             baseline_overrides=baselines or None,
         )
 
     async def handle_get_clip_urls(call: ServiceCall) -> ServiceResponse:
+        cfg_robot, _, _, _ = _configured_defaults(hass)
         return await async_get_clip_urls(
             hass,
             clip_id=call.data["clip_id"],
-            robot_id=call.data.get("robot"),
+            robot_id=call.data.get("robot") or cfg_robot,
         )
 
     async def handle_reassign_visit(call: ServiceCall) -> ServiceResponse:
+        cfg_robot, _, _, _ = _configured_defaults(hass)
         result = await async_reassign_visit(
             hass,
             event_id=call.data["event_id"],
             from_pet=call.data.get("from_pet"),
             to_pet=call.data.get("to_pet"),
-            robot_id=call.data.get("robot"),
+            robot_id=call.data.get("robot") or cfg_robot,
             refresh=bool(call.data.get("refresh", True)),
         )
         for history in _iter_alert_histories(hass):
