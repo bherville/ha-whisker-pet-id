@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.2 - 2026-11-27
+
+- **Clean Baselines in Health Summaries:** Wired `compute_clean_baselines` (`baseline_overrides`) into `WhiskerHealthCoordinator.async_run_health_summary` and `build_health_context`, and excluded `scale_anomaly` glitches from `suspected_redirected_visits`, eliminating false `Watch` alerts after Smart Cat ID has already resolved misattributions.
+
 ## 0.5.1 - 2026-11-27
 
 - **Per-Cat Alert Archive & Clearer Rows:** Refactored `AlertHistoryManager` to record one individual `pet_health:<cat>` alert per flagged cat instead of combining multiple cats into confusing household blobs (automatically pruning legacy multi-cat entries), skips transient startup fallback entries, formats repeat-visit cluster alerts in plain English (`3 quick visits in 16 min (1 with no waste)`), and redesigns `custom:whisker-health-archive-card` to display `Cat | What Happened | Status | When` with circular cat avatars, plain category tags (`Repeat Visits`, `Health Check`, `Cat ID Review`), and responsive narrow-column timestamps.

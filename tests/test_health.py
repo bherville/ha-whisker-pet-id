@@ -246,5 +246,51 @@ class TestAsyncGeminiAndNotify(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(calls[0][1], "mobile_app_brads_iphone_17")
 
 
+class TestCleanBaselinesAndScaleAnomalyFiltering(unittest.TestCase):
+    """Verify baseline_overrides and scale_anomaly redirect exclusion."""
+
+    def test_baseline_overrides_and_ignores_scale_anomaly_redirects(self) -> None:
+        now = datetime(2026, 11, 27, 18, 0, tzinfo=timezone.utc)
+        pets = [
+            {"pet_id": "p-jane", "name": "Jane", "estimated_weight_lbs": 11.46},
+            {"pet_id": "p-ember", "name": "Ember", "estimated_weight_lbs": 9.54},
+        ]
+        visits = [
+            {
+                "type": "PET_VISIT",
+                "timestamp": (now - timedelta(hours=1)).isoformat(),
+                "assigned_pets": ["Jane"],
+                "weight_lbs": 8.54,
+                "duration_seconds": 60,
+                "waste_type": "urine",
+                "waste_weight": 50.0,
+                "flags": [],
+                "closest_pets_by_weight": [{"name": "Jane", "abs_delta_lbs": 0.0}],
+            },
+            {
+                "type": "PET_VISIT",
+                "timestamp": (now - timedelta(hours=2)).isoformat(),
+                "assigned_pets": [],
+                "weight_lbs": 1.0,
+                "duration_seconds": 15,
+                "waste_type": None,
+                "waste_weight": 0.0,
+                "flags": ["unassigned", "scale_anomaly"],
+                "closest_pets_by_weight": [{"name": "Ember", "abs_delta_lbs": 8.54}],
+            },
+        ]
+        ctx = health.build_health_context(
+            visits,
+            pets,
+            tz_name="UTC",
+            now=now,
+            baseline_overrides={"Jane": 8.54, "Ember": 9.58},
+        )
+        self.assertEqual(ctx["pets"]["Jane"]["baseline_weight_lbs"], 8.54)
+        self.assertEqual(ctx["pets"]["Ember"]["baseline_weight_lbs"], 9.58)
+        self.assertEqual(ctx["pets"]["Ember"]["suspected_redirected_visits"], 0)
+        self.assertEqual(ctx["pets"]["Jane"]["weight_mismatch_count"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

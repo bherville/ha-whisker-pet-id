@@ -90,6 +90,7 @@ def build_health_context(
     window_hours: int = DEFAULT_HEALTH_WINDOW_HOURS,
     cluster_window_minutes: int = DEFAULT_CLUSTER_WINDOW_MINUTES,
     cluster_min_visits: int = DEFAULT_CLUSTER_MIN_VISITS,
+    baseline_overrides: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """Aggregate normalized LR5 PET_VISIT records into per-pet and household metrics."""
     now_utc = parse_timestamp(now) or datetime.now(timezone.utc)
@@ -112,8 +113,18 @@ def build_health_context(
             continue
         ordered_pet_names.append(name)
         per_pet_visits.setdefault(name, [])
-        est = pet.get("estimated_weight_lbs")
-        pet_baselines[name] = round(float(est), 2) if isinstance(est, (int, float)) else None
+        override_w = (
+            baseline_overrides.get(name) if isinstance(baseline_overrides, dict) else None
+        )
+        if (
+            isinstance(override_w, (int, float))
+            and not isinstance(override_w, bool)
+            and float(override_w) > 0
+        ):
+            pet_baselines[name] = round(float(override_w), 2)
+        else:
+            est = pet.get("estimated_weight_lbs")
+            pet_baselines[name] = round(float(est), 2) if isinstance(est, (int, float)) else None
         pet_ids[name] = pet.get("pet_id")
 
     window_visits: list[dict[str, Any]] = []
@@ -134,7 +145,11 @@ def build_health_context(
 
         if not assigned:
             unassigned_visits.append(visit)
-            if closest and isinstance(closest[0], dict):
+            if (
+                "scale_anomaly" not in flags
+                and closest
+                and isinstance(closest[0], dict)
+            ):
                 cand = closest[0].get("name")
                 if cand in suspected_redirected_in:
                     suspected_redirected_in[cand] += 1

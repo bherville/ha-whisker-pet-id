@@ -195,14 +195,26 @@ class WhiskerHealthCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
         try:
+            pets_resp = await async_get_pets_summary(self.hass, refresh=False)
+            runtime = self.hass.data.get(DOMAIN, {}).get(self.config_entry.entry_id)
+            diag_coord = (
+                runtime.get("diagnostics") if isinstance(runtime, dict) else None
+            )
+            cached_baselines = getattr(diag_coord, "_clean_baselines", None)
+            clean_baselines = compute_clean_baselines(
+                pets_resp.get("pets", []),
+                cached_baselines if isinstance(cached_baselines, dict) else None,
+            )
+            if diag_coord is not None and clean_baselines:
+                diag_coord._clean_baselines = clean_baselines
             visits_resp = await async_list_visits(
                 self.hass,
                 robot_id=robot_id,
                 limit=200,
                 activity_type="PET_VISIT",
                 include_clips=False,
+                baseline_overrides=clean_baselines or None,
             )
-            pets_resp = await async_get_pets_summary(self.hass, refresh=False)
         except HomeAssistantError as err:
             raise UpdateFailed(str(err)) from err
         except Exception as err:
@@ -215,6 +227,7 @@ class WhiskerHealthCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             window_hours=hours,
             cluster_window_minutes=cluster_window,
             cluster_min_visits=cluster_min,
+            baseline_overrides=clean_baselines or None,
         )
 
         try:
