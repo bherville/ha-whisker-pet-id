@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1 - 2026-11-28
+
+- **CI Compatibility Fix:** Made `PyYAML` optional in `tests/test_config_flow.py` so the stdlib-only `python:3.12-alpine` Kubernetes CI test job runs cleanly without third-party dependencies.
+
 ## 0.7.0 - 2026-11-28
 
 - **Full Household Configurability & Multi-Robot Support:** Added `robot` selection in initial setup and options flows (automatically listing all discovered Litter-Robot 5 units on your Whisker account), exposed native HA selectors for `ai_task_entity`, `snapshot_camera_entity`, `snapshot_max_files`, `min_valid_weight_lbs`, `max_valid_weight_lbs`, and `weight_mismatch_lbs` in both UI options and `ha_whisker_pet_id.configure_health`.

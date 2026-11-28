@@ -9,7 +9,10 @@ import sys
 import types
 import unittest
 
-import yaml
+try:
+    import yaml
+except ImportError:  # python:3.12-alpine CI image runs stdlib-only
+    yaml = None
 
 
 def _install_ha_stubs() -> None:
@@ -52,21 +55,6 @@ class TestDefaultsAndStringsParity(unittest.TestCase):
         )
         self.assertEqual(strings, trans)
 
-        services = yaml.safe_load((COMPONENT_DIR / "services.yaml").read_text(encoding="utf-8"))
-        self.assertEqual(set(services.keys()), set(strings["services"].keys()))
-        cfg_fields = set(services["configure_health"]["fields"].keys())
-        self.assertTrue(
-            {
-                const.CONF_ROBOT,
-                const.CONF_AI_TASK_ENTITY,
-                const.CONF_NOTIFY_SERVICE,
-                const.CONF_SNAPSHOT_CAMERA_ENTITY,
-                const.CONF_SNAPSHOT_MAX_FILES,
-                const.CONF_MIN_VALID_WEIGHT_LBS,
-                const.CONF_MAX_VALID_WEIGHT_LBS,
-                const.CONF_WEIGHT_MISMATCH_LBS,
-            }.issubset(cfg_fields)
-        )
         opt_fields = set(strings["options"]["step"]["init"]["data"].keys())
         self.assertTrue(
             {
@@ -77,3 +65,22 @@ class TestDefaultsAndStringsParity(unittest.TestCase):
                 const.CONF_WEIGHT_MISMATCH_LBS,
             }.issubset(opt_fields)
         )
+
+        if yaml is not None:
+            services = yaml.safe_load(
+                (COMPONENT_DIR / "services.yaml").read_text(encoding="utf-8")
+            )
+            self.assertEqual(set(services.keys()), set(strings["services"].keys()))
+            cfg_fields = set(services["configure_health"]["fields"].keys())
+            self.assertTrue(
+                {
+                    const.CONF_ROBOT,
+                    const.CONF_AI_TASK_ENTITY,
+                    const.CONF_NOTIFY_SERVICE,
+                    const.CONF_SNAPSHOT_CAMERA_ENTITY,
+                    const.CONF_SNAPSHOT_MAX_FILES,
+                    const.CONF_MIN_VALID_WEIGHT_LBS,
+                    const.CONF_MAX_VALID_WEIGHT_LBS,
+                    const.CONF_WEIGHT_MISMATCH_LBS,
+                }.issubset(cfg_fields)
+            )

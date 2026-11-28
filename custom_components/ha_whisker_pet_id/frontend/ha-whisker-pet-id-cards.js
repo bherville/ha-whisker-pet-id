@@ -1,6 +1,6 @@
 /* Built-in Lovelace cards for HA Whisker Pet ID */
 
-const CARD_VERSION = "0.7.0";
+const CARD_VERSION = "0.7.1";
 
 const DEFAULT_HEALTH_ENTITY = "sensor.ha_whisker_pet_id_health_summary";
 const DEFAULT_HISTORY_ENTITY = "sensor.ha_whisker_pet_id_alert_history";
