@@ -70,9 +70,16 @@ class AlertHistoryManager:
                     for item in valid_entries
                     if not str(item.get("alert_id") or "").startswith("health_summary:")
                 ]
-                pruned = len(filtered_entries) != len(valid_entries)
+                cleaned_legacy = len(filtered_entries) != len(valid_entries)
+                for item in filtered_entries:
+                    details = item.get("details")
+                    if isinstance(details, dict) and "household_headline" in details:
+                        details = dict(details)
+                        details.pop("household_headline", None)
+                        item["details"] = details
+                        cleaned_legacy = True
                 self._entries = filtered_entries
-                if pruned:
+                if cleaned_legacy:
                     await self.async_save()
 
     async def async_save(self) -> None:
@@ -259,16 +266,33 @@ class AlertHistoryManager:
                         dict(s) for s in cp_snaps if isinstance(s, dict) and s.get("url")
                     ]
 
+            pets_map = report.get("pets") if isinstance(report.get("pets"), dict) else {}
             active_pet_health_ids: set[str] = set()
             for pet_name, (pet_status, pet_headline) in flagged_pets_map.items():
                 alert_id = f"pet_health:{pet_name}"
                 active_pet_health_ids.add(alert_id)
+                pet_stats = pets_map.get(pet_name)
+                if isinstance(pet_stats, dict):
+                    pet_clusters_count = len(pet_stats.get("clusters") or [])
+                    pet_flagged_count = int(
+                        pet_stats.get("weight_mismatch_count", 0)
+                    ) + int(pet_stats.get("suspected_redirected_visits", 0))
+                else:
+                    pet_clusters_count = (
+                        int(report.get("clusters_detected", 0) or 0)
+                        if pet_name == "Household"
+                        else 0
+                    )
+                    pet_flagged_count = (
+                        int(report.get("flagged_visits_count", 0) or 0)
+                        if pet_name == "Household"
+                        else 0
+                    )
                 details: dict[str, Any] = {
                     "generation_mode": report.get("generation_mode"),
-                    "clusters_detected": report.get("clusters_detected", 0),
-                    "flagged_visits_count": report.get("flagged_visits_count", 0),
+                    "clusters_detected": pet_clusters_count,
+                    "flagged_visits_count": pet_flagged_count,
                     "pet_status": pet_status,
-                    "household_headline": report.get("headline"),
                 }
                 if pet_name in latest_snap_by_pet:
                     details["snapshots"] = latest_snap_by_pet[pet_name]
@@ -293,6 +317,15 @@ class AlertHistoryManager:
                     changed = True
                     opened += 1
                 else:
+                    prev_details = (
+                        existing.get("details")
+                        if isinstance(existing.get("details"), dict)
+                        else {}
+                    )
+                    if not details.get("snapshots") and prev_details.get("snapshots"):
+                        details["snapshots"] = list(prev_details["snapshots"])
+                    if not details.get("snapshot_url") and prev_details.get("snapshot_url"):
+                        details["snapshot_url"] = prev_details["snapshot_url"]
                     if existing.get("status") != "active":
                         existing["status"] = "active"
                         existing["resolved_at"] = None
@@ -317,6 +350,8 @@ class AlertHistoryManager:
                         if merged != (existing.get("notified_services") or []):
                             existing["notified_services"] = merged
                             changed = True
+                    if prev_details != details:
+                        changed = True
                     existing["last_seen_at"] = now_iso
                     existing["details"] = details
 

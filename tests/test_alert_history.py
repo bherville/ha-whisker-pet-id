@@ -259,8 +259,13 @@ class TestAlertHistoryManager(unittest.IsolatedAsyncioTestCase):
                 "generation_mode": "gemini",
                 "overall_status": "alert",
                 "headline": "Household alert",
-                "clusters_detected": 0,
+                "clusters_detected": 2,
                 "flagged_visits_count": 3,
+                "pets": {
+                    "Ember": {"clusters": [], "weight_mismatch_count": 1, "suspected_redirected_visits": 0},
+                    "Jane": {"clusters": [], "weight_mismatch_count": 0, "suspected_redirected_visits": 2},
+                    "Lexi": {"clusters": [{"start": "a"}, {"start": "b"}], "weight_mismatch_count": 0, "suspected_redirected_visits": 0},
+                },
                 "pet_summaries": {
                     "Ember": {"status": "watch", "summary": "Suspected misassigned visit."},
                     "Jane": {"status": "watch", "summary": "Weight mismatch flagged."},
@@ -275,8 +280,14 @@ class TestAlertHistoryManager(unittest.IsolatedAsyncioTestCase):
         alerts = mgr.get_sensor_payload()["recent_alerts"]
         self.assertEqual(len(alerts), 3)
         self.assertTrue(all(len(a["pets"]) == 1 for a in alerts))
+        self.assertTrue(all("household_headline" not in (a.get("details") or {}) for a in alerts))
+        by_id = {a["alert_id"]: a for a in alerts}
+        self.assertEqual(by_id["pet_health:Jane"]["details"]["clusters_detected"], 0)
+        self.assertEqual(by_id["pet_health:Jane"]["details"]["flagged_visits_count"], 2)
+        self.assertEqual(by_id["pet_health:Lexi"]["details"]["clusters_detected"], 2)
+        self.assertEqual(by_id["pet_health:Lexi"]["details"]["flagged_visits_count"], 0)
         self.assertEqual(
-            {a["alert_id"] for a in alerts},
+            set(by_id.keys()),
             {"pet_health:Ember", "pet_health:Jane", "pet_health:Lexi"},
         )
 

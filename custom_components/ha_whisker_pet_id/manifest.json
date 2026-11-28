@@ -18,5 +18,5 @@
   "issue_tracker": "https://gitlab.com/bherville/home-assistant/ha-whisker-pet-id/-/issues",
   "requirements": [],
   "single_config_entry": true,
-  "version": "0.7.1"
+  "version": "0.7.2"
 }

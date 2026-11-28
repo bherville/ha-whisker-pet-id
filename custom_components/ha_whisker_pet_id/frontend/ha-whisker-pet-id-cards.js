@@ -1,6 +1,6 @@
 /* Built-in Lovelace cards for HA Whisker Pet ID */
 
-const CARD_VERSION = "0.7.1";
+const CARD_VERSION = "0.7.2";
 
 const DEFAULT_HEALTH_ENTITY = "sensor.ha_whisker_pet_id_health_summary";
 const DEFAULT_HISTORY_ENTITY = "sensor.ha_whisker_pet_id_alert_history";
@@ -824,6 +824,7 @@ class WhiskerHealthArchiveCard extends HTMLElement {
         noteText = String(details.alert_message);
         consumedKeys.add("alert_message");
       }
+      consumedKeys.add("household_headline");
     } else if (sourceRaw === "pet_id_review") {
       if (details.weight_lbs !== undefined && details.weight_lbs !== null) {
         addField("Weight", `${Number(details.weight_lbs).toFixed(2)} lb`);

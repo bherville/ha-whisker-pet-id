@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.2 - 2026-11-28
+
+- **Independent Per-Cat Health Alerts:** Removed `household_headline` and household-wide cross-cat cluster/flag counts from individual `pet_health:<cat>` alerts (`alert_history.py` + `ha-whisker-pet-id-cards.js`), scoping each cat's alert details strictly to its own metrics and automatically stripping legacy `household_headline` entries on load.
+
 ## 0.7.1 - 2026-11-28
 
 - **CI Compatibility Fix:** Made `PyYAML` optional in `tests/test_config_flow.py` so the stdlib-only `python:3.12-alpine` Kubernetes CI test job runs cleanly without third-party dependencies.
